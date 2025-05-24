@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 
 function Register() {
+  const navigate = useNavigate();
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
@@ -20,7 +21,7 @@ function Register() {
     });
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
     setError('');
@@ -32,19 +33,52 @@ function Register() {
       return;
     }
 
-    if (formData.password.length < 6) {
-      setError('Password must be at least 6 characters');
+    if (formData.password.length < 8) {
+      setError('Password must be at least 8 characters long');
       setLoading(false);
       return;
     }
 
-    // Simulate API call
-    setTimeout(() => {
-      // Mock registration (replace with actual registration logic)
-      console.log('Registering with:', formData);
-      alert('Registration successful! Please check your email to verify your account.');
+    try {
+      // Use the URL that matches your actual backend endpoint
+      const response = await fetch('http://localhost:8000/MyAuth/register/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          username: formData.email,
+          email: formData.email,
+          password: formData.password,
+          password2: formData.confirmPassword,
+          first_name: formData.firstName,
+          last_name: formData.lastName
+        }),
+      });
+
+      const data = await response.json();
+      
+      if (!response.ok) {
+        // Django REST Framework returns errors in different formats
+        // This handles both string errors and object errors
+        if (typeof data === 'object') {
+          const errorMessage = Object.entries(data)
+            .map(([key, value]) => `${key}: ${value}`)
+            .join(', ');
+          throw new Error(errorMessage);
+        } else {
+          throw new Error(data.detail || 'Registration failed');
+        }
+      }
+
+      // Success - redirect to login
+      alert('Registration successful! Please login with your new account.');
+      navigate('/login');
+    } catch (error) {
+      setError(error.message);
+    } finally {
       setLoading(false);
-    }, 1000);
+    }
   };
 
   return (

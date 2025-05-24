@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
+import { useCart } from '../context/CartContext.jsx';
 
 function ProductDetail() {
   const { id } = useParams();
@@ -7,6 +8,7 @@ function ProductDetail() {
   const [loading, setLoading] = useState(true);
   const [quantity, setQuantity] = useState(1);
   const [selectedSize, setSelectedSize] = useState('');
+  const { addToCart } = useCart();
   
   // Mock product data (replace with API call)
   useEffect(() => {
@@ -36,15 +38,7 @@ function ProductDetail() {
       return;
     }
     
-    console.log('Added to cart:', {
-      productId: product.id,
-      name: product.name,
-      price: product.price,
-      size: selectedSize,
-      quantity
-    });
-    
-    // Here you would typically dispatch to your cart state manager
+    addToCart(product, quantity, selectedSize);
     alert(`Added ${quantity} ${product.name} (${selectedSize}) to cart!`);
   };
 

@@ -1,15 +1,29 @@
+// In ProductCard.jsx
 import React from 'react';
+import { Link } from 'react-router-dom';
 
 function ProductCard({ product }) {
   return (
-    <div style={{ border: '1px solid #eee', padding: 16, borderRadius: 8, width: 200 }}>
-      <img
-        src={product.image}
-        alt={product.name}
-        style={{ width: '100%', height: 150, objectFit: 'cover', borderRadius: 4 }}
-      />
-      <h3>{product.name}</h3>
-      <p>{product.price} $</p>
+    <div className="border rounded-lg overflow-hidden hover:shadow-lg transition">
+      <Link to={`/products/${product.id}`}>
+        <img 
+          src={product.image} 
+          alt={product.name}
+          className="w-full h-64 object-cover"
+        />
+      </Link>
+      <div className="p-4">
+        <Link to={`/products/${product.id}`}>
+          <h3 className="font-semibold text-lg hover:text-gray-700">{product.name}</h3>
+        </Link>
+        <p className="text-gray-700 font-medium mt-1">${product.price.toFixed(2)}</p>
+        <Link 
+          to={`/products/${product.id}`}
+          className="mt-3 block text-center py-2 bg-black text-white rounded hover:bg-gray-800 transition"
+        >
+          View Details
+        </Link>
+      </div>
     </div>
   );
 }

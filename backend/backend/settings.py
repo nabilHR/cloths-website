@@ -18,7 +18,7 @@ INSTALLED_APPS = [
     # 3rd-party
     'rest_framework',
     'corsheaders',
-
+    'MyAuth',
     # local apps
     'store',
 ]
@@ -33,6 +33,12 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+]
+
+
+# Allow frontend to make API calls
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:5173",  # Vite's default port
 ]
 
 ROOT_URLCONF = 'backend.urls'
