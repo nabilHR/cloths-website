@@ -15,7 +15,7 @@ function ProductDetail() {
     // Simulate API call
     setTimeout(() => {
       setProduct({
-        id: id,
+        id: parseInt(id),
         name: 'Classic T-Shirt',
         price: 29.99,
         description: 'A comfortable cotton t-shirt perfect for everyday wear. Features a classic fit and soft fabric.',

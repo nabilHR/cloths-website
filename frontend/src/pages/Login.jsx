@@ -1,31 +1,62 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 
 function Login() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const navigate = useNavigate();
+  const [formData, setFormData] = useState({
+    email: '',
+    password: '',
+  });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const handleSubmit = (e) => {
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setFormData({
+      ...formData,
+      [name]: value
+    });
+  };
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
     setError('');
-    
-    // Simulate API call
-    setTimeout(() => {
-      // Mock successful login (replace with actual auth logic)
-      console.log('Logging in with:', { email, password });
+
+    try {
+      const response = await fetch('http://localhost:8000/MyAuth/login/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          username: formData.email,  // Django expects 'username'
+          password: formData.password
+        }),
+      });
+
+      const data = await response.json();
       
-      if (email === 'user@example.com' && password === 'password') {
-        // You would normally set auth state and redirect here
-        alert('Login successful!');
-      } else {
-        setError('Invalid email or password');
+      if (!response.ok) {
+        throw new Error(data.detail || 'Login failed');
       }
-      
+
+      // Store the token in localStorage
+      localStorage.setItem('authToken', data.token);
+      localStorage.setItem('user', JSON.stringify({
+        id: data.user_id,
+        email: data.email,
+        firstName: data.first_name,
+        lastName: data.last_name
+      }));
+
+      // Redirect to home page
+      navigate('/');
+    } catch (error) {
+      setError(error.message);
+    } finally {
       setLoading(false);
-    }, 1000);
+    }
   };
 
   return (
@@ -46,8 +77,9 @@ function Login() {
           <input
             type="email"
             id="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            name="email"
+            value={formData.email}
+            onChange={handleChange}
             className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-black"
             required
           />
@@ -60,8 +92,9 @@ function Login() {
           <input
             type="password"
             id="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
+            name="password"
+            value={formData.password}
+            onChange={handleChange}
             className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-black"
             required
           />

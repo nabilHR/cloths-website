@@ -21,6 +21,7 @@ INSTALLED_APPS = [
     'MyAuth',
     # local apps
     'store',
+
 ]
 
 MIDDLEWARE = [
@@ -40,6 +41,7 @@ MIDDLEWARE = [
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",  # Vite's default port
 ]
+
 
 ROOT_URLCONF = 'backend.urls'
 
@@ -113,5 +115,6 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': ['rest_framework.permissions.AllowAny'],
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'rest_framework.authentication.TokenAuthentication',
+        'rest_framework.authentication.SessionAuthentication',
     ],
 }

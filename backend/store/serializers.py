@@ -54,3 +54,21 @@ class RegisterSerializer(serializers.ModelSerializer):
             password=validated_data["password"],
         )
         return user
+
+
+# backend/store/serializers.py
+from rest_framework import serializers
+from .models import Category, Product, ProductImage
+
+class ProductImageSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ProductImage
+        fields = ['id', 'image']
+
+class ProductSerializer(serializers.ModelSerializer):
+    images = ProductImageSerializer(many=True, read_only=True)
+    
+    class Meta:
+        model = Product
+        fields = ['id', 'name', 'slug', 'description', 'price', 'image', 
+                  'category', 'sizes', 'in_stock', 'images']
