@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; }
+        .header { background-color: #000; color: #fff; padding: 20px; text-align: center; }
+        .content { padding: 20px; }
+        .order-info { margin-bottom: 20px; }
+        .order-items { width: 100%; border-collapse: collapse; }
+        .order-items th, .order-items td { padding: 10px; text-align: left; border-bottom: 1px solid #ddd; }
+        .footer { background-color: #f5f5f5; padding: 20px; text-align: center; font-size: 12px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Order Confirmation</h1>
+        </div>
+        <div class="content">
+            <p>Dear {{ user.first_name }} {{ user.last_name }},</p>
+            <p>Thank you for your order! We've received your order and will process it shortly.</p>
+            
+            <div class="order-info">
+                <h2>Order Details</h2>
+                <p><strong>Order Number:</strong> {{ order.id }}</p>
+                <p><strong>Order Date:</strong> {{ order.created_at|date }}</p>
+                <p><strong>Order Status:</strong> {{ order.status }}</p>
+            </div>
+            
+            <h2>Items</h2>
+            <table class="order-items">
+                <thead>
+                    <tr>
+                        <th>Product</th>
+                        <th>Size</th>
+                        <th>Quantity</th>
+                        <th>Price</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in items %}
+                    <tr>
+                        <td>{{ item.product.name }}</td>
+                        <td>{{ item.size }}</td>
+                        <td>{{ item.quantity }}</td>
+                        <td>${{ item.price }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot>
+                    <tr>
+                        <td colspan="3"><strong>Subtotal</strong></td>
+                        <td><strong>${{ order.subtotal }}</strong></td>
+                    </tr>
+                    <tr>
+                        <td colspan="3"><strong>Shipping</strong></td>
+                        <td><strong>${{ order.shipping_cost }}</strong></td>
+                    </tr>
+                    <tr>
+                        <td colspan="3"><strong>Total</strong></td>
+                        <td><strong>${{ order.total }}</strong></td>
+                    </tr>
+                </tfoot>
+            </table>
+            
+            <div class="shipping-info">
+                <h2>Shipping Information</h2>
+                <p>{{ order.shipping_address }}</p>
+                <p>{{ order.shipping_city }}, {{ order.shipping_postal_code }}</p>
+                <p>{{ order.shipping_country }}</p>
+            </div>
+        </div>
+        <div class="footer">
+            <p>If you have any questions, please contact our customer service.</p>
+            <p>&copy; 2025 Cloths Store. All rights reserved.</p>
+        </div>
+    </div>
+</body>
+</html>

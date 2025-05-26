@@ -14,14 +14,11 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'rest_framework.authtoken',
-    # 3rd-party
     'rest_framework',
+    'rest_framework.authtoken',
     'corsheaders',
+    'store',  # Make sure this line exists
     'MyAuth',
-    # local apps
-    'store',
-
 ]
 
 MIDDLEWARE = [
@@ -48,7 +45,7 @@ ROOT_URLCONF = 'backend.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [BASE_DIR / 'templates'],
+        'DIRS': [os.path.join(BASE_DIR, 'templates')],  # This line is important
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -118,3 +115,7 @@ REST_FRAMEWORK = {
         'rest_framework.authentication.SessionAuthentication',
     ],
 }
+
+# Email settings
+DEFAULT_FROM_EMAIL = 'store@example.com'
+EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'  # For development

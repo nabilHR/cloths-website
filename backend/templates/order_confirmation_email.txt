@@ -1,0 +1,28 @@
+Order Confirmation
+
+Dear {{ user.first_name }} {{ user.last_name }},
+
+Thank you for your order! We've received your order and will process it shortly.
+
+Order Details:
+Order Number: {{ order.id }}
+Order Date: {{ order.created_at|date }}
+Order Status: {{ order.status }}
+
+Items:
+{% for item in items %}
+* {{ item.product.name }} - Size: {{ item.size }}, Qty: {{ item.quantity }}, Price: ${{ item.price }}
+{% endfor %}
+
+Subtotal: ${{ order.subtotal }}
+Shipping: ${{ order.shipping_cost }}
+Total: ${{ order.total }}
+
+Shipping Information:
+{{ order.shipping_address }}
+{{ order.shipping_city }}, {{ order.shipping_postal_code }}
+{{ order.shipping_country }}
+
+If you have any questions, please contact our customer service.
+
+© 2025 Cloths Store. All rights reserved.

@@ -135,5 +135,16 @@ function Login() {
     </div>
   );
 }
-
+// In your login success handler
+const handleLoginSuccess = (data) => {
+  localStorage.setItem('authToken', data.token);
+  localStorage.setItem('user', JSON.stringify({
+    email: data.user.email,
+    firstName: data.user.first_name,
+    lastName: data.user.last_name,
+    is_staff: data.user.is_staff // Store admin status
+  }));
+  
+  navigate(from || '/');
+};
 export default Login;

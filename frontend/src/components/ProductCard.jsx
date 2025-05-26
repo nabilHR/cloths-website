@@ -16,7 +16,7 @@ function ProductCard({ product }) {
         <Link to={`/products/${product.id}`}>
           <h3 className="font-semibold text-lg hover:text-gray-700">{product.name}</h3>
         </Link>
-        <p className="text-gray-700 font-medium mt-1">${product.price.toFixed(2)}</p>
+        <p className="text-lg font-semibold">${parseFloat(product.price).toFixed(2)}</p>
         <Link 
           to={`/products/${product.id}`}
           className="mt-3 block text-center py-2 bg-black text-white rounded hover:bg-gray-800 transition"

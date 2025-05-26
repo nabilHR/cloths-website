@@ -93,6 +93,48 @@ function Profile() {
     );
   };
 
+  const renderAccountManagement = () => (
+    <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+      <div className="p-6 border-b">
+        <h2 className="text-xl font-semibold">Account Management</h2>
+      </div>
+      <div className="p-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <Link 
+            to="/addresses" 
+            className="p-4 border rounded-md hover:bg-gray-50 flex items-center"
+          >
+            <div className="mr-4 text-gray-700">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+            </div>
+            <div>
+              <h3 className="font-medium">Shipping Addresses</h3>
+              <p className="text-sm text-gray-500">Manage your saved addresses</p>
+            </div>
+          </Link>
+          
+          <Link 
+            to="/order-history" 
+            className="p-4 border rounded-md hover:bg-gray-50 flex items-center"
+          >
+            <div className="mr-4 text-gray-700">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+              </svg>
+            </div>
+            <div>
+              <h3 className="font-medium">Order History</h3>
+              <p className="text-sm text-gray-500">View your past orders</p>
+            </div>
+          </Link>
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <div className="max-w-4xl mx-auto">
       <h1 className="text-3xl font-bold mb-8">My Account</h1>
@@ -121,6 +163,8 @@ function Profile() {
       ) : (
         activeTab === 'profile' ? renderProfileContent() : renderOrdersContent()
       )}
+
+      {renderAccountManagement()}
     </div>
   );
 }

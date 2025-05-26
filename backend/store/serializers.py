@@ -1,41 +1,56 @@
 from rest_framework import serializers
-from .models import Category, Product, Order, OrderItem
+from .models import Category, Product, Order, OrderItem, Review, ProductImage, ShippingAddress
 
 class CategorySerializer(serializers.ModelSerializer):
     class Meta:
         model = Category
         fields = ['id', 'name', 'slug']
 
+class ProductImageSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ProductImage
+        fields = ['id', 'image']
+
 class ProductSerializer(serializers.ModelSerializer):
     category = CategorySerializer(read_only=True)
     category_id = serializers.PrimaryKeyRelatedField(queryset=Category.objects.all(), source='category', write_only=True)
+    category_name = serializers.ReadOnlyField(source='category.name')
+    average_rating = serializers.SerializerMethodField()
+    review_count = serializers.SerializerMethodField()
+    images = ProductImageSerializer(many=True, read_only=True)
 
     class Meta:
         model = Product
-        fields = ['id', 'name', 'description', 'price', 'image', 'category', 'category_id']
+        fields = ['id', 'name', 'slug', 'description', 'price', 'image', 
+                  'category', 'sizes', 'in_stock', 'images', 'category_id', 'category_name', 'average_rating', 'review_count']
+
+    def get_average_rating(self, obj):
+        reviews = obj.reviews.all()
+        if not reviews:
+            return None
+        return sum(review.rating for review in reviews) / len(reviews)
+
+    def get_review_count(self, obj):
+        return obj.reviews.count()
 
 class OrderItemSerializer(serializers.ModelSerializer):
-    product = ProductSerializer(read_only=True)
-    product_id = serializers.PrimaryKeyRelatedField(queryset=Product.objects.all(), source='product', write_only=True)
+    product = ProductSerializer()
 
     class Meta:
         model = OrderItem
-        fields = ['id', 'product', 'product_id', 'quantity', 'total_price']
+        fields = ['id', 'product', 'quantity', 'size', 'price']
 
 class OrderSerializer(serializers.ModelSerializer):
-    items = OrderItemSerializer(many=True)
+    items = OrderItemSerializer(source='orderitem_set', many=True, read_only=True)
 
     class Meta:
         model = Order
-        fields = ['id', 'created_at', 'updated_at', 'items', 'total_price']
-
-    def create(self, validated_data):
-        items_data = validated_data.pop('items')
-        order = Order.objects.create(**validated_data)
-        for item_data in items_data:
-            OrderItem.objects.create(order=order, **item_data)
-        return order
-
+        fields = [
+            'id', 'user', 'status', 'created_at', 'updated_at',
+            'shipping_address', 'shipping_city', 'shipping_postal_code', 'shipping_country',
+            'payment_method', 'payment_details', 'subtotal', 'shipping_cost', 'total',
+            'items'
+        ]
 
 from django.contrib.auth.models import User
 from rest_framework import serializers
@@ -56,19 +71,21 @@ class RegisterSerializer(serializers.ModelSerializer):
         return user
 
 
-# backend/store/serializers.py
-from rest_framework import serializers
-from .models import Category, Product, ProductImage
-
-class ProductImageSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = ProductImage
-        fields = ['id', 'image']
-
-class ProductSerializer(serializers.ModelSerializer):
-    images = ProductImageSerializer(many=True, read_only=True)
+# Add to your serializers.py
+class ReviewSerializer(serializers.ModelSerializer):
+    user_name = serializers.SerializerMethodField()
     
     class Meta:
-        model = Product
-        fields = ['id', 'name', 'slug', 'description', 'price', 'image', 
-                  'category', 'sizes', 'in_stock', 'images']
+        model = Review
+        fields = ['id', 'rating', 'comment', 'user', 'user_name', 'created_at']
+        read_only_fields = ['user']
+    
+    def get_user_name(self, obj):
+        return obj.user.get_full_name() or obj.user.username
+
+class ShippingAddressSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ShippingAddress
+        fields = ['id', 'first_name', 'last_name', 'address', 'city', 
+                  'postal_code', 'country', 'is_default', 'created_at']
+        read_only_fields = ['created_at']

@@ -13,6 +13,8 @@ import BulkUpload from './pages/BulkUpload.jsx';
 import Footer from './components/Footer.jsx';
 import ProtectedRoute from './components/ProtectedRoute.jsx';
 import { CartProvider } from './context/CartContext.jsx';
+import Addresses from './pages/Addresses.jsx';
+import OrderHistory from './pages/OrderHistory.jsx';
 
 function App() {
   return (
@@ -60,6 +62,23 @@ function App() {
                 element={
                   <ProtectedRoute>
                     <BulkUpload />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route path="/order-confirmation/:orderId" element={<OrderSuccess />} />
+              <Route 
+                path="/addresses" 
+                element={
+                  <ProtectedRoute>
+                    <Addresses />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/order-history" 
+                element={
+                  <ProtectedRoute>
+                    <OrderHistory />
                   </ProtectedRoute>
                 } 
               />
