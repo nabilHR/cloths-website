@@ -1,9 +1,9 @@
 import React, { useContext, useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { CartContext } from '../context/CartContext';
+import { useCart } from '../context/CartContext';
 
 function Cart() {
-  const { cart, updateQuantity, removeFromCart, clearCart, calculateTotal } = useContext(CartContext);
+  const { cartItems: cart, updateQuantity, removeFromCart, clearCart, getSubtotal: calculateTotal } = useCart();
   const navigate = useNavigate();
   const [isUpdating, setIsUpdating] = useState(false);
   const [loading, setLoading] = useState(true);

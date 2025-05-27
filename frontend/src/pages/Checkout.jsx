@@ -1,9 +1,9 @@
 import React, { useState, useContext, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CartContext } from '../context/CartContext';
+import { useCart } from '../context/CartContext';
 
 function Checkout() {
-  const { cart, calculateTotal, clearCart } = useContext(CartContext);
+  const { cartItems: cart, getSubtotal: calculateTotal, clearCart } = useCart();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');

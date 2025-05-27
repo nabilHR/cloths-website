@@ -15,6 +15,9 @@ import ProtectedRoute from './components/ProtectedRoute.jsx';
 import { CartProvider } from './context/CartContext.jsx';
 import Addresses from './pages/Addresses.jsx';
 import OrderHistory from './pages/OrderHistory.jsx';
+import CategoryPage from './pages/CategoryPage.jsx'; // Import the new CategoryPage component
+import WishlistPage from './pages/WishlistPage'; // Import the WishlistPage component
+import AccountDashboard from './pages/AccountDashboard'; // Import AccountDashboard
 
 function App() {
   return (
@@ -31,6 +34,7 @@ function App() {
               <Route path="/login" element={<Login />} />
               <Route path="/register" element={<Register />} />
               <Route path="/order-success" element={<OrderSuccess />} />
+              <Route path="/category/:slug" element={<CategoryPage />} /> {/* Add the new route here */}
               
               {/* Protected Routes */}
               <Route 
@@ -79,6 +83,22 @@ function App() {
                 element={
                   <ProtectedRoute>
                     <OrderHistory />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/wishlist" 
+                element={
+                  <ProtectedRoute>
+                    <WishlistPage />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/account" 
+                element={
+                  <ProtectedRoute>
+                    <AccountDashboard />
                   </ProtectedRoute>
                 } 
               />

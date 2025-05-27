@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Category, Product, Order, OrderItem, Review, ProductImage, ShippingAddress
+from .models import Category, Product, Order, OrderItem, Review, ProductImage, ShippingAddress, WishlistItem, ReviewImage
 
 class CategorySerializer(serializers.ModelSerializer):
     class Meta:
@@ -12,26 +12,13 @@ class ProductImageSerializer(serializers.ModelSerializer):
         fields = ['id', 'image']
 
 class ProductSerializer(serializers.ModelSerializer):
-    category = CategorySerializer(read_only=True)
-    category_id = serializers.PrimaryKeyRelatedField(queryset=Category.objects.all(), source='category', write_only=True)
-    category_name = serializers.ReadOnlyField(source='category.name')
-    average_rating = serializers.SerializerMethodField()
-    review_count = serializers.SerializerMethodField()
-    images = ProductImageSerializer(many=True, read_only=True)
-
+    average_rating = serializers.FloatField(read_only=True)
+    review_count = serializers.IntegerField(read_only=True)
+    
     class Meta:
         model = Product
-        fields = ['id', 'name', 'slug', 'description', 'price', 'image', 
-                  'category', 'sizes', 'in_stock', 'images', 'category_id', 'category_name', 'average_rating', 'review_count']
-
-    def get_average_rating(self, obj):
-        reviews = obj.reviews.all()
-        if not reviews:
-            return None
-        return sum(review.rating for review in reviews) / len(reviews)
-
-    def get_review_count(self, obj):
-        return obj.reviews.count()
+        fields = ['id', 'name', 'slug', 'description', 'price', 'image', 'category', 
+                 'average_rating', 'review_count', 'sizes', 'in_stock']
 
 class OrderItemSerializer(serializers.ModelSerializer):
     product = ProductSerializer()
@@ -72,16 +59,59 @@ class RegisterSerializer(serializers.ModelSerializer):
 
 
 # Add to your serializers.py
+class ReviewImageSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ReviewImage
+        fields = ['id', 'image']
+
 class ReviewSerializer(serializers.ModelSerializer):
-    user_name = serializers.SerializerMethodField()
+    user = serializers.StringRelatedField(read_only=True)
+    user_email = serializers.SerializerMethodField()
+    images = ReviewImageSerializer(many=True, read_only=True)
+    uploaded_images = serializers.ListField(
+        child=serializers.ImageField(max_length=1000000, allow_empty_file=False),
+        write_only=True,
+        required=False
+    )
     
     class Meta:
         model = Review
-        fields = ['id', 'rating', 'comment', 'user', 'user_name', 'created_at']
-        read_only_fields = ['user']
+        fields = ['id', 'product', 'user', 'user_email', 'title', 'content', 
+                 'rating', 'created_at', 'is_verified_purchase', 'images', 'uploaded_images']
+        read_only_fields = ['user', 'is_verified_purchase', 'created_at']
     
-    def get_user_name(self, obj):
-        return obj.user.get_full_name() or obj.user.username
+    def get_user_email(self, obj):
+        # Return first letter of email + asterisks for privacy
+        email = obj.user.email
+        if email:
+            username, domain = email.split('@')
+            masked_username = username[0] + '*' * (len(username) - 1)
+            return f"{masked_username}@{domain}"
+        return ""
+    
+    def create(self, validated_data):
+        uploaded_images = validated_data.pop('uploaded_images', [])
+        user = self.context['request'].user
+        
+        # Check if this is a verified purchase
+        order_items = OrderItem.objects.filter(
+            order__user=user, 
+            product_id=validated_data['product'].id,
+            order__status='completed'
+        )
+        is_verified = order_items.exists()
+        
+        review = Review.objects.create(
+            user=user,
+            is_verified_purchase=is_verified,
+            **validated_data
+        )
+        
+        # Create review images
+        for image in uploaded_images:
+            ReviewImage.objects.create(review=review, image=image)
+            
+        return review
 
 class ShippingAddressSerializer(serializers.ModelSerializer):
     class Meta:
@@ -89,3 +119,10 @@ class ShippingAddressSerializer(serializers.ModelSerializer):
         fields = ['id', 'first_name', 'last_name', 'address', 'city', 
                   'postal_code', 'country', 'is_default', 'created_at']
         read_only_fields = ['created_at']
+
+class WishlistItemSerializer(serializers.ModelSerializer):
+    product = ProductSerializer()
+    
+    class Meta:
+        model = WishlistItem
+        fields = ['id', 'product', 'added_at']

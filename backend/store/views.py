@@ -1,16 +1,25 @@
+from rest_framework import viewsets, serializers
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated, AllowAny
+from .models import Review
+from .serializers import ReviewSerializer
 from rest_framework import viewsets, status
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated, IsAdminUser
 from rest_framework.authtoken.models import Token
 from rest_framework.views import APIView
+from rest_framework.decorators import action
 from .serializers import (
     RegisterSerializer, 
     CategorySerializer, 
     ProductSerializer, 
     OrderSerializer,
-    ReviewSerializer
+    ReviewSerializer,
+    ShippingAddressSerializer,
+    WishlistItemSerializer
 )
-from .models import Category, Product, Order, OrderItem, Review, ProductImage
+from .models import Category, Product, Order, OrderItem, Review, ProductImage, ShippingAddress, WishlistItem
 from django.utils.text import slugify
 from django.db import transaction
 from django.core.mail import send_mail
@@ -36,6 +45,21 @@ class CategoryViewSet(viewsets.ModelViewSet):
 class ProductViewSet(viewsets.ModelViewSet):
     queryset = Product.objects.all()
     serializer_class = ProductSerializer
+
+    def get_queryset(self):
+        queryset = Product.objects.all()
+        
+        # Filter by category id
+        category_id = self.request.query_params.get('category')
+        if category_id:
+            queryset = queryset.filter(category_id=category_id)
+        
+        # Filter by category slug
+        category_slug = self.request.query_params.get('category_slug')
+        if category_slug:
+            queryset = queryset.filter(category__slug=category_slug)
+        
+        return queryset
 
 class RegisterView(APIView):
     permission_classes = [AllowAny]
@@ -264,14 +288,89 @@ class BulkProductUploadView(APIView):
 
 class ReviewViewSet(viewsets.ModelViewSet):
     serializer_class = ReviewSerializer
-    permission_classes = [IsAuthenticated]
     
     def get_queryset(self):
+        # Anyone can view all reviews
         product_id = self.request.query_params.get('product')
         if product_id:
             return Review.objects.filter(product_id=product_id)
+        
+        # If user is authenticated, they can see their own reviews via 'my-reviews'
+        if self.action == 'my_reviews' and self.request.user.is_authenticated:
+            return Review.objects.filter(user=self.request.user)
+            
         return Review.objects.all()
     
+    def get_permissions(self):
+        if self.action in ['create', 'update', 'partial_update', 'destroy', 'my_reviews']:
+            return [IsAuthenticated()]
+        return [AllowAny()]
+    
+    @action(detail=False, methods=['get'])
+    def my_reviews(self, request):
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+    
+    @action(detail=False, methods=['get'])
+    def my_review(self, request):
+        product_id = request.query_params.get('product')
+        if not product_id:
+            return Response({'detail': 'Product ID is required'}, status=400)
+            
+        queryset = Review.objects.filter(
+            user=request.user,
+            product_id=product_id
+        )
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+    
     def perform_create(self, serializer):
+        # Check if user already reviewed this product
         product_id = self.request.data.get('product')
-        serializer.save(user=self.request.user, product_id=product_id)
+        user_review = Review.objects.filter(user=self.request.user, product_id=product_id)
+        
+        if user_review.exists():
+            raise serializers.ValidationError("You have already reviewed this product")
+            
+        serializer.save(user=self.request.user)
+
+class ShippingAddressViewSet(viewsets.ModelViewSet):
+    serializer_class = ShippingAddressSerializer
+    permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        return ShippingAddress.objects.filter(user=self.request.user)
+    
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
+class WishlistViewSet(viewsets.ModelViewSet):
+    serializer_class = WishlistItemSerializer
+    permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        return WishlistItem.objects.filter(user=self.request.user)
+    
+    def create(self, request):
+        product_id = request.data.get('product_id')
+        
+        try:
+            product = Product.objects.get(id=product_id)
+        except Product.DoesNotExist:
+            return Response({'detail': 'Product not found'}, status=404)
+            
+        wishlist_item, created = WishlistItem.objects.get_or_create(
+            user=request.user,
+            product=product
+        )
+        
+        if created:
+            return Response({'detail': 'Product added to wishlist'}, status=201)
+        else:
+            return Response({'detail': 'Product already in wishlist'}, status=200)
+            
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        self.perform_destroy(instance)
+        return Response({'detail': 'Product removed from wishlist'}, status=200)

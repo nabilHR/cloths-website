@@ -24,6 +24,17 @@ class Product(models.Model):
     
     def __str__(self):
         return self.name
+    
+    @property
+    def average_rating(self):
+        reviews = self.reviews.all()
+        if reviews.count() > 0:
+            return sum(review.rating for review in reviews) / reviews.count()
+        return 0
+    
+    @property
+    def review_count(self):
+        return self.reviews.count()
 
 class ProductImage(models.Model):
     product = models.ForeignKey(Product, related_name='images', on_delete=models.CASCADE)
@@ -82,17 +93,33 @@ class OrderItem(models.Model):
         return self.product.price * self.quantity
 
 class Review(models.Model):
-    product = models.ForeignKey(Product, related_name='reviews', on_delete=models.CASCADE)
+    RATING_CHOICES = (
+        (1, '1 - Poor'),
+        (2, '2 - Fair'),
+        (3, '3 - Good'),
+        (4, '4 - Very Good'),
+        (5, '5 - Excellent')
+    )
+    
+    product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='reviews')
     user = models.ForeignKey(User, on_delete=models.CASCADE)
-    rating = models.IntegerField(choices=[(i, i) for i in range(1, 6)])
-    comment = models.TextField()
+    title = models.CharField(max_length=100)
+    content = models.TextField()
+    rating = models.IntegerField(choices=RATING_CHOICES, default=5)
     created_at = models.DateTimeField(auto_now_add=True)
+    is_verified_purchase = models.BooleanField(default=False)
     
     class Meta:
-        unique_together = ('product', 'user')  # One review per user per product
+        ordering = ['-created_at']
+        unique_together = ('user', 'product')  # One review per product per user
     
     def __str__(self):
         return f"{self.user.username}'s review for {self.product.name}"
+
+class ReviewImage(models.Model):
+    review = models.ForeignKey(Review, on_delete=models.CASCADE, related_name='images')
+    image = models.ImageField(upload_to='review_images/')
+    uploaded_at = models.DateTimeField(auto_now_add=True)
 
 class ShippingAddress(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='shipping_addresses')
@@ -113,3 +140,13 @@ class ShippingAddress(models.Model):
         if self.is_default:
             ShippingAddress.objects.filter(user=self.user, is_default=True).update(is_default=False)
         super().save(*args, **kwargs)
+
+# Create a Wishlist model in models.py
+class WishlistItem(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='wishlist_items')
+    product = models.ForeignKey(Product, on_delete=models.CASCADE)
+    added_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        unique_together = ('user', 'product')
+        ordering = ['-added_at']

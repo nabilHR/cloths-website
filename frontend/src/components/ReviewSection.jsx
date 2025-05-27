@@ -1,171 +1,352 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import StarRating from './StarRating';
 
-function ReviewSection({ productId, reviews, isLoggedIn, onReviewAdded }) {
-  const [userReview, setUserReview] = useState({ rating: 5, comment: '' });
-  const [isSubmitting, setIsSubmitting] = useState(false);
+function ReviewSection({ productId }) {
+  const [reviews, setReviews] = useState([]);
+  const [userReview, setUserReview] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [showForm, setShowForm] = useState(false);
+  const [formData, setFormData] = useState({
+    title: '',
+    content: '',
+    rating: 5,
+    images: []
+  });
+  const [submitLoading, setSubmitLoading] = useState(false);
+  const [sortBy, setSortBy] = useState('newest');
   const navigate = useNavigate();
-
-  const handleRatingChange = (rating) => {
-    setUserReview(prev => ({ ...prev, rating }));
+  
+  // Fetch reviews for this product
+  useEffect(() => {
+    const fetchReviews = async () => {
+      try {
+        setLoading(true);
+        const response = await fetch(`http://localhost:8000/api/reviews/?product=${productId}`);
+        
+        if (response.ok) {
+          const data = await response.json();
+          setReviews(data);
+          
+          // Check if user has already reviewed
+          const token = localStorage.getItem('authToken');
+          if (token) {
+            const userResponse = await fetch(`http://localhost:8000/api/reviews/my-review/?product=${productId}`, {
+              headers: {
+                'Authorization': `Token ${token}`
+              }
+            });
+            
+            if (userResponse.ok) {
+              const userData = await userResponse.json();
+              if (userData.length > 0) {
+                setUserReview(userData[0]);
+              }
+            }
+          }
+        } else {
+          const errorData = await response.json();
+          setError(errorData.detail || 'Failed to load reviews');
+          console.error('Error response:', errorData);
+        }
+      } catch (err) {
+        setError('Failed to load reviews. Please try again later.');
+        console.error('Fetch error:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchReviews();
+  }, [productId]);
+  
+  // Handle form input changes
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setFormData({
+      ...formData,
+      [name]: value
+    });
   };
-
-  const handleCommentChange = (e) => {
-    setUserReview(prev => ({ ...prev, comment: e.target.value }));
+  
+  // Handle rating change
+  const handleRatingChange = (newRating) => {
+    setFormData({
+      ...formData,
+      rating: newRating
+    });
   };
-
-  const submitReview = async (e) => {
+  
+  // Handle image upload
+  const handleImageChange = (e) => {
+    const files = Array.from(e.target.files);
+    
+    // Limit to 3 images
+    if (files.length > 3) {
+      alert('You can upload up to 3 images');
+      return;
+    }
+    
+    setFormData({
+      ...formData,
+      images: files
+    });
+  };
+  
+  // Submit review
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    
-    if (!isLoggedIn) {
-      navigate('/login', { state: { from: `/products/${productId}` } });
-      return;
-    }
-    
-    if (!userReview.comment) {
-      alert('Please add a comment to your review.');
-      return;
-    }
-    
-    setIsSubmitting(true);
+    setSubmitLoading(true);
     
     try {
       const token = localStorage.getItem('authToken');
+      if (!token) {
+        setError('You must be logged in to leave a review');
+        return;
+      }
+      
+      const formDataToSend = new FormData();
+      formDataToSend.append('product', productId);
+      formDataToSend.append('title', formData.title);
+      formDataToSend.append('content', formData.content);
+      formDataToSend.append('rating', formData.rating);
+      
+      formData.images.forEach(image => {
+        formDataToSend.append('uploaded_images', image);
+      });
+      
       const response = await fetch('http://localhost:8000/api/reviews/', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
           'Authorization': `Token ${token}`
         },
-        body: JSON.stringify({
-          product: productId,
-          rating: userReview.rating,
-          comment: userReview.comment
-        })
+        body: formDataToSend
       });
       
       if (response.ok) {
-        // Reset form
-        setUserReview({ rating: 5, comment: '' });
-        // Notify parent to refresh reviews
-        if (onReviewAdded) onReviewAdded();
+        const newReview = await response.json();
+        setReviews([newReview, ...reviews]);
+        setUserReview(newReview);
+        setShowForm(false);
+        setFormData({
+          title: '',
+          content: '',
+          rating: 5,
+          images: []
+        });
       } else {
         const errorData = await response.json();
-        if (errorData.non_field_errors?.includes('The fields product, user must make a unique set.')) {
-          alert('You have already reviewed this product.');
-        } else {
-          alert('Failed to submit review. Please try again.');
-        }
+        setError(errorData.detail || 'Failed to submit review');
       }
-    } catch (error) {
-      console.error("Error submitting review:", error);
-      alert('An error occurred. Please try again.');
+    } catch (err) {
+      setError('An error occurred');
     } finally {
-      setIsSubmitting(false);
+      setSubmitLoading(false);
     }
   };
-
+  
+  // Sort reviews
+  const sortedReviews = [...reviews].sort((a, b) => {
+    if (sortBy === 'newest') {
+      return new Date(b.created_at) - new Date(a.created_at);
+    } else if (sortBy === 'highest') {
+      return b.rating - a.rating;
+    } else if (sortBy === 'lowest') {
+      return a.rating - b.rating;
+    }
+    return 0;
+  });
+  
+  if (loading) {
+    return <div className="py-4">Loading reviews...</div>;
+  }
+  
   return (
-    <div className="mt-12">
-      <h2 className="text-2xl font-bold mb-6">Customer Reviews</h2>
+    <div className="border-t border-gray-200 pt-8 mt-8">
+      <h2 className="text-2xl font-medium mb-6">Customer Reviews</h2>
       
-      {reviews.length > 0 ? (
-        <div className="mb-8">
-          <div className="mb-4">
-            <span className="text-lg font-medium">
-              {reviews.reduce((sum, review) => sum + review.rating, 0) / reviews.length} out of 5
-            </span>
-            <span className="text-gray-500 ml-2">
-              ({reviews.length} {reviews.length === 1 ? 'review' : 'reviews'})
-            </span>
-          </div>
-          
-          <div className="space-y-6">
-            {reviews.map(review => (
-              <div key={review.id} className="border-b pb-6">
-                <div className="flex items-center mb-2">
-                  <div className="flex text-yellow-400">
-                    {[...Array(5)].map((_, i) => (
-                      <svg 
-                        key={i} 
-                        className="w-5 h-5" 
-                        fill={i < review.rating ? 'currentColor' : 'none'} 
-                        stroke="currentColor" 
-                        viewBox="0 0 24 24"
-                      >
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.783-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"></path>
-                      </svg>
-                    ))}
-                  </div>
-                  <span className="ml-2 font-medium">{review.user_name}</span>
-                  <span className="ml-auto text-sm text-gray-500">
-                    {new Date(review.created_at).toLocaleDateString()}
-                  </span>
-                </div>
-                <p className="text-gray-700">{review.comment}</p>
-              </div>
-            ))}
-          </div>
+      {error && (
+        <div className="bg-red-50 text-red-700 p-4 rounded-md mb-6">
+          {error}
         </div>
-      ) : (
-        <p className="text-gray-500 mb-8">No reviews yet. Be the first to review this product!</p>
       )}
       
-      <div className="bg-gray-50 p-6 rounded-lg">
-        <h3 className="text-xl font-semibold mb-4">Write a Review</h3>
-        
-        {!isLoggedIn ? (
-          <div>
-            <p className="mb-4">Please <button onClick={() => navigate('/login', { state: { from: `/products/${productId}` } })} className="text-blue-600 underline">log in</button> to write a review.</p>
+      {/* Review summary */}
+      <div className="flex flex-col md:flex-row justify-between mb-8">
+        <div>
+          <div className="flex items-center">
+            <StarRating rating={reviews.reduce((acc, review) => acc + review.rating, 0) / reviews.length || 0} size="lg" />
+            <span className="ml-2 text-lg">
+              {(reviews.reduce((acc, review) => acc + review.rating, 0) / reviews.length || 0).toFixed(1)} out of 5
+            </span>
           </div>
-        ) : (
-          <form onSubmit={submitReview}>
+          <p className="text-sm text-gray-500 mt-1">{reviews.length} reviews</p>
+        </div>
+        
+        <div className="mt-4 md:mt-0">
+          {!userReview && !showForm ? (
+            <button
+              onClick={() => setShowForm(true)}
+              className="bg-black text-white px-6 py-2 rounded-md hover:bg-gray-800"
+            >
+              Write a Review
+            </button>
+          ) : userReview && !showForm ? (
+            <div className="bg-green-50 text-green-700 p-4 rounded-md">
+              You've already reviewed this product
+            </div>
+          ) : null}
+        </div>
+      </div>
+      
+      {/* Review form */}
+      {showForm && (
+        <div className="bg-gray-50 p-6 rounded-lg mb-8">
+          <h3 className="text-lg font-medium mb-4">Write Your Review</h3>
+          <form onSubmit={handleSubmit}>
             <div className="mb-4">
-              <label className="block mb-2 font-medium">Rating</label>
-              <div className="flex text-yellow-400">
-                {[...Array(5)].map((_, i) => (
-                  <button
-                    key={i}
-                    type="button"
-                    onClick={() => handleRatingChange(i + 1)}
-                    className="w-8 h-8 focus:outline-none"
-                  >
-                    <svg 
-                      className="w-full h-full" 
-                      fill={i < userReview.rating ? 'currentColor' : 'none'} 
-                      stroke="currentColor" 
-                      viewBox="0 0 24 24"
-                    >
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.783-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"></path>
-                    </svg>
-                  </button>
-                ))}
-              </div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Rating
+              </label>
+              <StarRating 
+                rating={formData.rating} 
+                size="lg"
+                interactive={true}
+                onChange={handleRatingChange}
+              />
             </div>
             
             <div className="mb-4">
-              <label htmlFor="comment" className="block mb-2 font-medium">Your Review</label>
-              <textarea
-                id="comment"
-                rows="4"
-                value={userReview.comment}
-                onChange={handleCommentChange}
-                className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-black"
-                placeholder="What did you like or dislike about this product?"
+              <label htmlFor="title" className="block text-sm font-medium text-gray-700 mb-1">
+                Review Title
+              </label>
+              <input
+                type="text"
+                id="title"
+                name="title"
+                value={formData.title}
+                onChange={handleChange}
                 required
+                className="w-full px-4 py-2 border border-gray-300 rounded-md"
+                placeholder="Summarize your experience"
+              />
+            </div>
+            
+            <div className="mb-4">
+              <label htmlFor="content" className="block text-sm font-medium text-gray-700 mb-1">
+                Review Content
+              </label>
+              <textarea
+                id="content"
+                name="content"
+                value={formData.content}
+                onChange={handleChange}
+                required
+                rows="4"
+                className="w-full px-4 py-2 border border-gray-300 rounded-md"
+                placeholder="Share details about your experience with this product"
               ></textarea>
             </div>
             
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className={`px-6 py-2 ${isSubmitting ? 'bg-gray-400' : 'bg-black hover:bg-gray-800'} text-white rounded-md transition`}
-            >
-              {isSubmitting ? 'Submitting...' : 'Submit Review'}
-            </button>
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Add Photos (optional, max 3)
+              </label>
+              <input
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={handleImageChange}
+                className="w-full px-4 py-2 border border-gray-300 rounded-md"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Photos help other customers make better purchase decisions
+              </p>
+            </div>
+            
+            <div className="flex justify-end space-x-3">
+              <button
+                type="button"
+                onClick={() => setShowForm(false)}
+                className="px-4 py-2 border border-gray-300 rounded-md"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={submitLoading}
+                className="bg-black text-white px-6 py-2 rounded-md hover:bg-gray-800 disabled:bg-gray-400"
+              >
+                {submitLoading ? 'Submitting...' : 'Submit Review'}
+              </button>
+            </div>
           </form>
-        )}
+        </div>
+      )}
+      
+      {/* Sort options */}
+      <div className="flex justify-end mb-4">
+        <select
+          value={sortBy}
+          onChange={(e) => setSortBy(e.target.value)}
+          className="px-3 py-1 border border-gray-300 rounded-md text-sm"
+        >
+          <option value="newest">Most Recent</option>
+          <option value="highest">Highest Rated</option>
+          <option value="lowest">Lowest Rated</option>
+        </select>
       </div>
+      
+      {/* Reviews list */}
+      {sortedReviews.length === 0 ? (
+        <div className="text-center py-8 bg-gray-50 rounded-md">
+          <p className="text-gray-500">No reviews yet. Be the first to review this product!</p>
+        </div>
+      ) : (
+        <div className="space-y-8">
+          {sortedReviews.map(review => (
+            <div key={review.id} className="border-b border-gray-200 pb-8">
+              <div className="flex items-start justify-between mb-2">
+                <div>
+                  <h3 className="font-medium">{review.title}</h3>
+                  <div className="flex items-center">
+                    <StarRating rating={review.rating} />
+                    <span className="ml-2 text-sm text-gray-500">
+                      {new Date(review.created_at).toLocaleDateString()}
+                    </span>
+                  </div>
+                </div>
+                <div className="text-sm text-gray-500">
+                  {review.user_email}
+                  {review.is_verified_purchase && (
+                    <span className="ml-2 bg-green-100 text-green-800 text-xs px-2 py-1 rounded-md">
+                      Verified Purchase
+                    </span>
+                  )}
+                </div>
+              </div>
+              
+              <p className="text-gray-700 mt-2">{review.content}</p>
+              
+              {/* Review images */}
+              {review.images && review.images.length > 0 && (
+                <div className="mt-4 flex space-x-2">
+                  {review.images.map(image => (
+                    <div key={image.id} className="w-20 h-20 overflow-hidden rounded-md">
+                      <img 
+                        src={image.image} 
+                        alt="Review" 
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

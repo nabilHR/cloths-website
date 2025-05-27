@@ -5,7 +5,9 @@ from .views import (
     ProductViewSet, 
     OrderViewSet,
     ReviewViewSet,  # Now you can include this
-    BulkProductUploadView
+    BulkProductUploadView,
+    ShippingAddressViewSet,  # Include the ShippingAddressViewSet
+    WishlistViewSet  # Include the WishlistViewSet
 )
 
 # Create a router for store app endpoints
@@ -14,6 +16,8 @@ router.register(r'categories', CategoryViewSet)
 router.register(r'products', ProductViewSet)
 router.register(r'orders', OrderViewSet, basename='order')
 router.register(r'reviews', ReviewViewSet, basename='review')  # Uncomment this
+router.register(r'shipping-addresses', ShippingAddressViewSet, basename='shipping-address')  # Register the new viewset
+router.register(r'wishlist', WishlistViewSet, basename='wishlist')  # Register the Wishlist viewset
 
 # Define URL patterns
 urlpatterns = [

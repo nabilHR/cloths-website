@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { useCart } from '../context/CartContext.jsx';
 import ReviewSection from '../components/ReviewSection';
+import WishlistButton from '../components/WishlistButton';
 
 function ProductDetail() {
   const { id } = useParams();
@@ -136,33 +137,26 @@ function ProductDetail() {
             </div>
           </div>
           
-          <button
-            className="w-full py-3 bg-black text-white rounded-md hover:bg-gray-800 transition"
-            onClick={handleAddToCart}
-          >
-            Add to Cart
-          </button>
+          <div className="flex items-center space-x-4 mt-6">
+            <button
+              onClick={handleAddToCart}
+              disabled={!selectedSize}
+              className="flex-1 bg-black text-white py-3 px-6 rounded-md hover:bg-gray-800 disabled:bg-gray-400"
+            >
+              {selectedSize ? 'Add to Cart' : 'Select a Size'}
+            </button>
+            
+            <WishlistButton 
+              productId={product.id} 
+              className="flex items-center justify-center w-12 h-12 rounded-md border border-gray-300 hover:bg-gray-100"
+            />
+          </div>
         </div>
       </div>
 
       <ReviewSection 
-        productId={id} 
-        reviews={reviews} 
+        productId={product.id} 
         isLoggedIn={!!localStorage.getItem('authToken')} 
-        onReviewAdded={() => {
-          const fetchReviews = async () => {
-            try {
-              const response = await fetch(`http://localhost:8000/api/reviews/?product=${id}`);
-              if (response.ok) {
-                const data = await response.json();
-                setReviews(data);
-              }
-            } catch (error) {
-              console.error("Error fetching reviews:", error);
-            }
-          };
-          fetchReviews();
-        }} 
       />
     </div>
   );
