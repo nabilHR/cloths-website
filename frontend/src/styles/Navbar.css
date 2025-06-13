@@ -1,0 +1,97 @@
+/* Menu container */
+.fixed {
+  background-color: #fff;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+/* Menu animations */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+/* Category styling */
+.category-button {
+  position: relative;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.category-button:hover {
+  background-color: rgba(0, 0, 0, 0.05);
+}
+
+.category-button:active {
+  transform: scale(0.98);
+}
+
+/* Subcategory links */
+a {
+  font-family: 'Roboto', sans-serif;
+  font-size: 0.875rem;
+  color: #666;
+  transition: color 0.3s ease;
+}
+
+a:hover {
+  color: #333;
+}
+
+/* Subcategory styling */
+.subcategory-container {
+  padding-left: 12px;
+  border-left: 2px solid #f3f4f6;
+}
+
+.subcategory-link {
+  font-size: 0.95rem;
+  transition: all 0.2s ease;
+}
+
+.subcategory-link:hover {
+  transform: translateX(4px);
+}
+
+/* Icons */
+svg {
+  transition: transform 0.3s ease;
+}
+
+/* Icon transitions */
+svg {
+  transition: all 0.2s ease;
+}
+
+/* Button hover effects */
+button:hover svg, 
+a:hover svg {
+  transform: scale(1.1);
+}
+
+/* Remove default styling */
+button {
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+/* Custom scrollbar for category menu */
+.overflow-y-auto::-webkit-scrollbar {
+  width: 4px;
+}
+
+.overflow-y-auto::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+.overflow-y-auto::-webkit-scrollbar-thumb {
+  background: #888;
+  border-radius: 4px;
+}
+
+.overflow-y-auto::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}

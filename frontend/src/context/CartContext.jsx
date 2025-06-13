@@ -31,23 +31,24 @@ export function CartProvider({ children }) {
   };
 
   // Add item to cart
-  const addToCart = (product, quantity, size) => {
-    setCartItems(prevItems => {
-      // Check if item already exists in cart
-      const existingItemIndex = prevItems.findIndex(
-        item => item.id === product.id && item.size === size
-      );
+  const addToCart = (product) => {
+    // Generate a unique key that includes size and color
+    const itemKey = `${product.id}${product.selectedSize ? `-${product.selectedSize}` : ''}${product.selectedColor ? `-${product.selectedColor}` : ''}`;
+    
+    // Check if this exact combination already exists in cart
+    const existingItemIndex = cartItems.findIndex(
+      item => `${item.id}${item.selectedSize ? `-${item.selectedSize}` : ''}${item.selectedColor ? `-${item.selectedColor}` : ''}` === itemKey
+    );
 
-      if (existingItemIndex > -1) {
-        // Update quantity of existing item
-        const updatedItems = [...prevItems];
-        updatedItems[existingItemIndex].quantity += quantity;
-        return updatedItems;
-      } else {
-        // Add new item
-        return [...prevItems, { ...product, quantity, size }];
-      }
-    });
+    if (existingItemIndex >= 0) {
+      // Update quantity of existing item
+      const updatedItems = [...cartItems];
+      updatedItems[existingItemIndex].quantity += product.quantity;
+      setCartItems(updatedItems);
+    } else {
+      // Add new item
+      setCartItems([...cartItems, {...product}]);
+    }
   };
 
   // Remove item from cart

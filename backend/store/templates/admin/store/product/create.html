@@ -1,0 +1,341 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block extrastyle %}
+<link rel="stylesheet" href="{% static 'admin/css/product_admin.css' %}">
+<style>
+    .form-container {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 20px;
+    }
+    
+    .form-section {
+        background-color: #fff;
+        padding: 20px;
+        margin-bottom: 20px;
+        border-radius: 5px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    
+    .form-section h2 {
+        margin-top: 0;
+        border-bottom: 1px solid #eee;
+        padding-bottom: 10px;
+        margin-bottom: 20px;
+        color: #333;
+    }
+    
+    .image-preview-container {
+        margin-top: 15px;
+    }
+    
+    .preview-image {
+        max-width: 150px;
+        max-height: 150px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        padding: 5px;
+    }
+    
+    .formset-item {
+        border: 1px solid #eee;
+        padding: 15px;
+        margin-bottom: 10px;
+        border-radius: 4px;
+    }
+    
+    .submit-row {
+        text-align: right;
+        margin-top: 20px;
+    }
+    
+    .submit-row input {
+        background-color: #447e9b;
+        color: white;
+        padding: 10px 20px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+    }
+    
+    .submit-row input:hover {
+        background-color: #365d71;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="form-container">
+    <h1>{{ title }}</h1>
+    
+    <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+        
+        <!-- Basic Information -->
+        <div class="form-section">
+            <h2>Basic Information</h2>
+            
+            <div class="fieldWrapper">
+                <label for="{{ form.name.id_for_label }}">Product Name:</label>
+                {{ form.name }}
+                {% if form.name.errors %}
+                    <div class="errorlist">{{ form.name.errors }}</div>
+                {% endif %}
+            </div>
+            
+            <div class="fieldWrapper">
+                <label for="{{ form.slug.id_for_label }}">Slug:</label>
+                {{ form.slug }}
+                <small>The slug will be used in the URL. Leave blank to auto-generate from name.</small>
+                {% if form.slug.errors %}
+                    <div class="errorlist">{{ form.slug.errors }}</div>
+                {% endif %}
+            </div>
+            
+            <div class="fieldWrapper">
+                <label for="{{ form.description.id_for_label }}">Description:</label>
+                {{ form.description }}
+                {% if form.description.errors %}
+                    <div class="errorlist">{{ form.description.errors }}</div>
+                {% endif %}
+            </div>
+        </div>
+        
+        <!-- Pricing Section -->
+        <div class="form-section">
+            <h2>Pricing</h2>
+            
+            <div class="fieldWrapper">
+                <label for="{{ form.price.id_for_label }}">Regular Price ($):</label>
+                {{ form.price }}
+                {% if form.price.errors %}
+                    <div class="errorlist">{{ form.price.errors }}</div>
+                {% endif %}
+            </div>
+            
+            <div class="fieldWrapper">
+                <label for="{{ form.sale_price.id_for_label }}">Sale Price ($):</label>
+                {{ form.sale_price }}
+                <small>Leave blank if not on sale</small>
+                {% if form.sale_price.errors %}
+                    <div class="errorlist">{{ form.sale_price.errors }}</div>
+                {% endif %}
+            </div>
+        </div>
+        
+        <!-- Categories Section -->
+        <div class="form-section">
+            <h2>Categorization</h2>
+            
+            <div class="fieldWrapper">
+                <label for="{{ form.category.id_for_label }}">Category:</label>
+                {{ form.category }}
+                {% if form.category.errors %}
+                    <div class="errorlist">{{ form.category.errors }}</div>
+                {% endif %}
+            </div>
+            
+            <div class="fieldWrapper">
+                <label for="{{ form.subcategory.id_for_label }}">Subcategory:</label>
+                {{ form.subcategory }}
+                {% if form.subcategory.errors %}
+                    <div class="errorlist">{{ form.subcategory.errors }}</div>
+                {% endif %}
+            </div>
+        </div>
+        
+        <!-- Inventory Section -->
+        <div class="form-section">
+            <h2>Inventory</h2>
+            
+            <div class="fieldWrapper">
+                <label for="{{ form.in_stock.id_for_label }}">In Stock:</label>
+                {{ form.in_stock }}
+                {% if form.in_stock.errors %}
+                    <div class="errorlist">{{ form.in_stock.errors }}</div>
+                {% endif %}
+            </div>
+            
+            <div class="fieldWrapper">
+                <label for="{{ form.sizes.id_for_label }}">Sizes:</label>
+                {{ form.sizes }}
+                <small>{{ form.sizes.help_text }}</small>
+                {% if form.sizes.errors %}
+                    <div class="errorlist">{{ form.sizes.errors }}</div>
+                {% endif %}
+            </div>
+            
+            <div class="fieldWrapper">
+                <label for="{{ form.colors.id_for_label }}">Colors:</label>
+                {{ form.colors }}
+                <small>Enter colors separated by commas (e.g., Red,Blue,Green)</small>
+                {% if form.colors.errors %}
+                    <div class="errorlist">{{ form.colors.errors }}</div>
+                {% endif %}
+            </div>
+            
+            <div class="fieldWrapper">
+                <label for="{{ form.sku.id_for_label }}">SKU:</label>
+                {{ form.sku }}
+                {% if form.sku.errors %}
+                    <div class="errorlist">{{ form.sku.errors }}</div>
+                {% endif %}
+            </div>
+        </div>
+        
+        <!-- Main Image Section -->
+        <div class="form-section">
+            <h2>Main Image</h2>
+            
+            <div class="fieldWrapper">
+                <label for="{{ form.image.id_for_label }}">Primary Product Image:</label>
+                {{ form.image }}
+                {% if form.image.errors %}
+                    <div class="errorlist">{{ form.image.errors }}</div>
+                {% endif %}
+                
+                <div class="image-preview-container">
+                    <img id="main-image-preview" class="preview-image" src="#" alt="Image preview" style="display: none;">
+                </div>
+            </div>
+        </div>
+        
+        <!-- Additional Images Section -->
+        <div class="form-section">
+            <h2>Additional Images</h2>
+            {{ image_formset.management_form }}
+            
+            <div id="formset-container">
+                {% for form in image_formset.forms %}
+                    <div class="formset-item">
+                        <div class="fieldWrapper">
+                            <label>Image:</label>
+                            {{ form.image }}
+                        </div>
+                        
+                        <div class="fieldWrapper">
+                            <label>Alt Text:</label>
+                            {{ form.alt_text }}
+                        </div>
+                        
+                        <div class="fieldWrapper">
+                            <label>Display Order:</label>
+                            {{ form.display_order }}
+                        </div>
+                        
+                        {% if form.instance.pk %}{{ form.DELETE }}{% endif %}
+                        
+                        <div class="image-preview-container">
+                            <img class="additional-preview" src="#" alt="Additional image preview" style="display: none;">
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+        </div>
+        
+        <!-- Display Options Section -->
+        <div class="form-section">
+            <h2>Display Options</h2>
+            
+            <div class="fieldWrapper">
+                <label for="{{ form.featured.id_for_label }}">Featured Product:</label>
+                {{ form.featured }}
+                {% if form.featured.errors %}
+                    <div class="errorlist">{{ form.featured.errors }}</div>
+                {% endif %}
+            </div>
+        </div>
+        
+        <div class="submit-row">
+            <input type="submit" value="Save Product">
+        </div>
+    </form>
+</div>
+{% endblock %}
+
+{% block extrajs %}
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script>
+    $(document).ready(function() {
+        // Main image preview
+        $('#{{ form.image.id_for_label }}').change(function() {
+            readURL(this, '#main-image-preview');
+        });
+        
+        // Additional images preview
+        $('.formset-item input[type="file"]').each(function() {
+            $(this).change(function() {
+                readURL(this, $(this).closest('.formset-item').find('.additional-preview'));
+            });
+        });
+        
+        // Dynamic subcategory loading
+        $('#{{ form.category.id_for_label }}').change(function() {
+            var categoryId = $(this).val();
+            var subcategorySelect = $('#{{ form.subcategory.id_for_label }}');
+            
+            // Clear current options
+            subcategorySelect.empty().append('<option value="">---------</option>');
+            
+            if (!categoryId) {
+                return;
+            }
+            
+            // Add loading option
+            subcategorySelect.append('<option value="">Loading...</option>');
+            
+            // Fetch subcategories
+            $.ajax({
+                url: '/api/subcategories/?category=' + categoryId,
+                type: 'GET',
+                dataType: 'json',
+                success: function(data) {
+                    subcategorySelect.empty().append('<option value="">---------</option>');
+                    
+                    $.each(data, function(index, subcategory) {
+                        subcategorySelect.append(
+                            $('<option></option>')
+                                .attr('value', subcategory.id)
+                                .text(subcategory.name)
+                        );
+                    });
+                },
+                error: function() {
+                    subcategorySelect.empty().append('<option value="">Error loading subcategories</option>');
+                }
+            });
+        });
+        
+        // Auto-generate slug from name
+        $('#{{ form.name.id_for_label }}').keyup(function() {
+            var nameField = $(this);
+            var slugField = $('#{{ form.slug.id_for_label }}');
+            
+            // Only auto-generate if slug is empty
+            if (slugField.val() === '') {
+                var slug = nameField.val()
+                    .toLowerCase()
+                    .replace(/[^\w\s-]/g, '') // Remove special chars
+                    .replace(/\s+/g, '-')     // Replace spaces with hyphens
+                    .replace(/-+/g, '-');     // Remove consecutive hyphens
+                
+                slugField.val(slug);
+            }
+        });
+        
+        // Function to preview images
+        function readURL(input, previewElement) {
+            if (input.files && input.files[0]) {
+                var reader = new FileReader();
+                
+                reader.onload = function(e) {
+                    $(previewElement).attr('src', e.target.result).show();
+                }
+                
+                reader.readAsDataURL(input.files[0]);
+            }
+        }
+    });
+</script>
+{% endblock %}

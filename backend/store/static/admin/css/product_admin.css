@@ -1,0 +1,63 @@
+.field-image_preview img {
+    border-radius: 4px;
+    object-fit: cover;
+}
+
+.admin-form-field {
+    width: 90%;
+    padding: 8px;
+    margin-bottom: 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+}
+
+#image-preview {
+    max-width: 300px;
+    max-height: 300px;
+    margin-top: 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    padding: 5px;
+    display: none;
+}
+
+.inline-related h3 {
+    background: #f8f8f8;
+    padding: 8px;
+    border-radius: 4px;
+}
+
+.tabular.inline-related tbody tr.has_original td {
+    padding-top: 8px;
+    padding-bottom: 8px;
+}
+
+.fieldset-label {
+    font-weight: bold;
+    color: #447e9b;
+    padding: 5px 0;
+    margin-bottom: 10px;
+    border-bottom: 1px solid #eee;
+}
+
+/* Better styling for form sections */
+fieldset.module {
+    margin-bottom: 20px;
+    padding: 10px;
+    background: #f9f9f9;
+    border-radius: 4px;
+}
+
+/* Specific styling for the product description */
+#id_description {
+    font-family: 'Courier New', monospace;
+    font-size: 14px;
+}
+
+/* Make the image upload more prominent */
+.form-row.field-image {
+    background: #f5f5f5;
+    padding: 15px;
+    border-radius: 4px;
+    margin-bottom: 15px;
+}

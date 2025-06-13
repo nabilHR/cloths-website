@@ -1,0 +1,14 @@
+
+{% extends "admin/change_list.html" %}
+{% load i18n admin_urls %}
+
+{% block object-tools-items %}
+  {% if show_fancy_upload_button %}
+  <li>
+    <a href="{% url 'admin:fancy_product_upload' %}" class="addlink" style="background: linear-gradient(135deg, #6a11cb 0%, #2575fc 100%);">
+      ✨ Fancy Upload
+    </a>
+  </li>
+  {% endif %}
+  {{ block.super }}
+{% endblock %}

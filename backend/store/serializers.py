@@ -1,10 +1,18 @@
-from rest_framework import serializers
-from .models import Category, Product, Order, OrderItem, Review, ProductImage, ShippingAddress, WishlistItem, ReviewImage
+from rest_framework import serializers, viewsets
+from .models import Category, SubCategory, Product, Order, OrderItem, Review, ProductImage, ShippingAddress, WishlistItem, ReviewImage, UserProfile, Address
+
+# Serializers
+class SubCategorySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SubCategory
+        fields = ['id', 'name', 'slug', 'description', 'image']
 
 class CategorySerializer(serializers.ModelSerializer):
+    subcategories = SubCategorySerializer(many=True, read_only=True)
+    
     class Meta:
         model = Category
-        fields = ['id', 'name', 'slug']
+        fields = ['id', 'name', 'slug', 'subcategories']
 
 class ProductImageSerializer(serializers.ModelSerializer):
     class Meta:
@@ -126,3 +134,31 @@ class WishlistItemSerializer(serializers.ModelSerializer):
     class Meta:
         model = WishlistItem
         fields = ['id', 'product', 'added_at']
+
+class UserProfileSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UserProfile
+        fields = ['id', 'user', 'bio', 'profile_picture', 'phone_number']
+        read_only_fields = ['user']
+
+class AddressSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Address
+        fields = ['id', 'user', 'address_line1', 'address_line2', 'city', 'state', 'postal_code', 'country', 'is_default']
+        read_only_fields = ['user']
+
+# ViewSets
+class CategoryViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = Category.objects.all().prefetch_related('subcategories')
+    serializer_class = CategorySerializer
+
+class SubCategoryViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = SubCategory.objects.all()
+    serializer_class = SubCategorySerializer
+    
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        category_slug = self.request.query_params.get('category', None)
+        if category_slug:
+            queryset = queryset.filter(category__slug=category_slug)
+        return queryset

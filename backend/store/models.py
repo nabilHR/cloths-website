@@ -11,16 +11,43 @@ class Category(models.Model):
     class Meta:
         verbose_name_plural = 'Categories'
 
+class SubCategory(models.Model):
+    name = models.CharField(max_length=100)
+    slug = models.SlugField(unique=True)
+    category = models.ForeignKey(Category, on_delete=models.CASCADE, related_name='subcategories')
+    description = models.TextField(blank=True, null=True)
+    image = models.ImageField(upload_to='subcategories/', blank=True, null=True)
+    
+    def __str__(self):
+        return f"{self.category.name} - {self.name}"
+    
+    class Meta:
+        verbose_name_plural = 'Subcategories'
+        ordering = ['name']
+
 class Product(models.Model):
     name = models.CharField(max_length=200)
     slug = models.SlugField(unique=True)
     description = models.TextField()
     price = models.DecimalField(max_digits=10, decimal_places=2)
-    image = models.ImageField(upload_to='products/')
+    
+    
+    # Add these missing fields
+    sale_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    colors = models.JSONField(null=True, blank=True)  # Store as a JSON array
+    featured = models.BooleanField(default=False)
+    sku = models.CharField(max_length=100, blank=True, null=True)
+    
+    # Make sure your model also has these fields if referenced elsewhere
+    image = models.ImageField(upload_to='products/', blank=True, null=True)
     category = models.ForeignKey(Category, on_delete=models.CASCADE, related_name='products')
-    sizes = models.JSONField(default=list)  # Store as ["S", "M", "L", "XL"]
+    subcategory = models.ForeignKey(SubCategory, on_delete=models.CASCADE, related_name='products', null=True, blank=True)
     in_stock = models.BooleanField(default=True)
+    sizes = models.JSONField(null=True, blank=True)  # Store as a JSON array
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)  # Auto-updates on save
+    average_rating = models.DecimalField(max_digits=3, decimal_places=2, default=0)
+    review_count = models.IntegerField(default=0)
     
     def __str__(self):
         return self.name
@@ -42,9 +69,13 @@ class ProductImage(models.Model):
     alt_text = models.CharField(max_length=100, blank=True)
     is_feature = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
+    display_order = models.IntegerField(default=0)  # New field for display order
     
     def __str__(self):
         return f"Image for {self.product.name}"
+    
+    class Meta:
+        ordering = ['display_order', 'created_at']  # Order by display order then by creation date
 
 class Order(models.Model):
     STATUS_CHOICES = (
@@ -150,3 +181,31 @@ class WishlistItem(models.Model):
     class Meta:
         unique_together = ('user', 'product')
         ordering = ['-added_at']
+
+class UserProfile(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
+    bio = models.TextField(blank=True, null=True)
+    profile_picture = models.ImageField(upload_to='profile_pictures/', blank=True, null=True)
+    phone_number = models.CharField(max_length=20, blank=True, null=True)
+    
+    def __str__(self):
+        return f"{self.user.username}'s profile"
+
+class Address(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='addresses')
+    address_line1 = models.CharField(max_length=255)
+    address_line2 = models.CharField(max_length=255, blank=True, null=True)
+    city = models.CharField(max_length=100)
+    state = models.CharField(max_length=100, blank=True, null=True)
+    postal_code = models.CharField(max_length=20)
+    country = models.CharField(max_length=100)
+    is_default = models.BooleanField(default=False)
+    
+    def __str__(self):
+        return f"{self.address_line1}, {self.city}"
+    
+    def save(self, *args, **kwargs):
+        # If this address is set as default, unset any other default addresses for this user
+        if self.is_default:
+            Address.objects.filter(user=self.user, is_default=True).update(is_default=False)
+        super().save(*args, **kwargs)

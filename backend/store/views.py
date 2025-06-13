@@ -2,14 +2,7 @@ from rest_framework import viewsets, serializers
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
-from .models import Review
-from .serializers import ReviewSerializer
-from rest_framework import viewsets, status
-from rest_framework.response import Response
-from rest_framework.permissions import AllowAny, IsAuthenticated, IsAdminUser
-from rest_framework.authtoken.models import Token
-from rest_framework.views import APIView
-from rest_framework.decorators import action
+from .models import Review, Product, Category, Order, ShippingAddress, WishlistItem, UserProfile, Address
 from .serializers import (
     RegisterSerializer, 
     CategorySerializer, 
@@ -17,9 +10,16 @@ from .serializers import (
     OrderSerializer,
     ReviewSerializer,
     ShippingAddressSerializer,
-    WishlistItemSerializer
+    WishlistItemSerializer,
+    UserProfileSerializer,
+    AddressSerializer
 )
-from .models import Category, Product, Order, OrderItem, Review, ProductImage, ShippingAddress, WishlistItem
+from rest_framework import viewsets, status
+from rest_framework.response import Response
+from rest_framework.permissions import AllowAny, IsAuthenticated, IsAdminUser
+from rest_framework.authtoken.models import Token
+from rest_framework.views import APIView
+from rest_framework.decorators import action
 from django.utils.text import slugify
 from django.db import transaction
 from django.core.mail import send_mail
@@ -29,10 +29,19 @@ import json
 import os
 import uuid
 import traceback
+from django.db.models import Q
+from .pagination import CustomPagination
+from django.shortcuts import render, redirect
+from django.contrib.auth.decorators import login_required, user_passes_test
+from django.contrib import messages
+from .models import Product, ProductImage, Category, SubCategory
+
+
 
 class CategoryViewSet(viewsets.ModelViewSet):
     queryset = Category.objects.all()
     serializer_class = CategorySerializer
+    pagination_class = None  # Disable pagination for categories
     
     # Add error logging
     def list(self, request, *args, **kwargs):
@@ -43,23 +52,82 @@ class CategoryViewSet(viewsets.ModelViewSet):
             raise
 
 class ProductViewSet(viewsets.ModelViewSet):
-    queryset = Product.objects.all()
     serializer_class = ProductSerializer
-
+    lookup_field = 'slug'  # Ensure this is set to use slugs
+    
     def get_queryset(self):
         queryset = Product.objects.all()
         
-        # Filter by category id
+        # Text search
+        search_query = self.request.query_params.get('search', None)
+        if search_query:
+            queryset = queryset.filter(
+                Q(name__icontains=search_query) | 
+                Q(description__icontains=search_query)
+            )
+            
+        # Price range filtering - fully fixed version
+        min_price = self.request.query_params.get('min_price')
+        if min_price and min_price.strip():  # Ensure not empty string
+            try:
+                min_price_float = float(min_price)
+                print(f"🔍🔍🔍 APPLYING MIN PRICE FILTER: {min_price_float}")
+                queryset = queryset.filter(price__gte=min_price_float)
+            except (ValueError, TypeError) as e:
+                print(f"❌❌❌ ERROR PARSING MIN_PRICE: {min_price}, Error: {e}")
+                
+        max_price = self.request.query_params.get('max_price')
+        if max_price:
+            try:
+                max_price_float = float(max_price)
+                queryset = queryset.filter(price__lte=max_price_float)
+                print(f"⭐ Applying max_price filter: {max_price_float}")
+            except (ValueError, TypeError):
+                print(f"⭐ Invalid max_price value: {max_price}")
+        
+        # Category filtering
         category_id = self.request.query_params.get('category')
         if category_id:
             queryset = queryset.filter(category_id=category_id)
+            
+        # Size filtering
+        size = self.request.query_params.get('size')
+        if size:
+            # Assuming sizes are stored in a field called 'sizes'
+            # Modify this based on your actual model structure
+            queryset = queryset.filter(sizes__icontains=size)
+            
+        # Sort options
+        sort_by = self.request.query_params.get('sort_by')
+        if sort_by:
+            if sort_by == 'price_low':
+                queryset = queryset.order_by('price')
+            elif sort_by == 'price_high':
+                queryset = queryset.order_by('-price')
+            elif sort_by == 'newest':
+                queryset = queryset.order_by('-created_at')
+            elif sort_by == 'name_asc':
+                queryset = queryset.order_by('name')
+                
+        result_count = queryset.count()
+        print(f"⭐ Final query returned {result_count} products")
+        return queryset.distinct()
+    
+    @action(detail=False, methods=['get'], url_path='search-suggestions')
+    def search_suggestions(self, request):
+        query = request.query_params.get('q', '')
+        if not query or len(query) < 2:
+            return Response([])
+            
+        # Simple search for demo
+        products = self.get_queryset().filter(
+            Q(name__icontains=query) | 
+            Q(description__icontains=query) |
+            Q(category__name__icontains=query)
+        )[:8]  # Limit to 8 results
         
-        # Filter by category slug
-        category_slug = self.request.query_params.get('category_slug')
-        if category_slug:
-            queryset = queryset.filter(category__slug=category_slug)
-        
-        return queryset
+        serializer = self.get_serializer(products, many=True)
+        return Response(serializer.data)
 
 class RegisterView(APIView):
     permission_classes = [AllowAny]
@@ -80,6 +148,38 @@ class OrderViewSet(viewsets.ModelViewSet):
     
     def get_queryset(self):
         return Order.objects.filter(user=self.request.user)
+    
+    def retrieve(self, request, *args, **kwargs):
+        instance = self.get_object()
+        
+        # Check if the user has permission to view this order
+        if instance.user != request.user:
+            return Response(
+                {"detail": "You do not have permission to view this order."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+            
+        serializer = self.get_serializer(instance)
+        return Response(serializer.data)
+    
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        # Add the user to the order data
+        serializer.validated_data['user'] = request.user
+        
+        # Create the order
+        order = self.perform_create(serializer)
+        
+        # Return the new order data
+        return Response(
+            self.get_serializer(order).data,
+            status=status.HTTP_201_CREATED
+        )
+    
+    def perform_create(self, serializer):
+        return serializer.save()
     
     def create(self, request):
         # Extract data from request
@@ -374,3 +474,79 @@ class WishlistViewSet(viewsets.ModelViewSet):
         instance = self.get_object()
         self.perform_destroy(instance)
         return Response({'detail': 'Product removed from wishlist'}, status=200)
+
+class UserProfileViewSet(viewsets.ModelViewSet):
+    serializer_class = UserProfileSerializer
+    permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        return UserProfile.objects.filter(user=self.request.user)
+
+class AddressViewSet(viewsets.ModelViewSet):
+    serializer_class = AddressSerializer
+    permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        return Address.objects.filter(user=self.request.user)
+
+class UserReviewViewSet(viewsets.ReadOnlyModelViewSet):
+    serializer_class = ReviewSerializer
+    permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        return Review.objects.filter(user=self.request.user)
+
+def is_staff(user):
+    return user.is_staff or user.is_superuser
+
+@login_required
+@user_passes_test(is_staff)
+def product_create(request):
+    if request.method == 'POST':
+        form = ProductForm(request.POST, request.FILES)
+        image_formset = ProductImageFormSet(request.POST, request.FILES, prefix='images')
+        
+        if form.is_valid() and image_formset.is_valid():
+            # Save the product
+            product = form.save(commit=False)
+            # Process sizes if entered as comma-separated string
+            if isinstance(form.cleaned_data['sizes'], str):
+                product.sizes = [size.strip() for size in form.cleaned_data['sizes'].split(',') if size.strip()]
+            product.save()
+            
+            # Save the additional images
+            instances = image_formset.save(commit=False)
+            for instance in instances:
+                instance.product = product
+                instance.save()
+            
+            messages.success(request, f'Product "{product.name}" created successfully.')
+            return redirect('admin:store_product_changelist')
+    else:
+        form = ProductForm()
+        image_formset = ProductImageFormSet(prefix='images')
+    
+    return render(request, 'admin/store/product/create.html', {
+        'form': form,
+        'image_formset': image_formset,
+        'title': 'Add New Product',
+    })
+
+@login_required
+@user_passes_test(is_staff)
+def fancy_product_upload(request):
+    """A fancy product upload view with a beautiful interface"""
+    
+    if request.method == 'POST':
+        # Handle form submission here
+        # This will be implemented fully with the fancy upload HTML
+        messages.success(request, "Product created successfully!")
+        return redirect('admin:store_product_changelist')
+    
+    # Get all categories for the form
+    categories = Category.objects.all()
+    
+    return render(request, 'admin/store/product/fancy_upload.html', {
+        'categories': categories,
+        'title': 'Add New Product'
+    })

@@ -1,163 +1,425 @@
 import React, { useState, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
-import { useCart } from '../context/CartContext.jsx';
+import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useCart } from '../context/CartContext';
 import ReviewSection from '../components/ReviewSection';
 import WishlistButton from '../components/WishlistButton';
+import { showToast } from '../utils/toast';
+import { api } from '../utils/api';
+import ImageWithFallback from '../components/ImageWithFallback';
 
 function ProductDetail() {
-  const { id } = useParams();
+  const { slug } = useParams();
+  const navigate = useNavigate();
   const { addToCart } = useCart();
+  
+  // State management
   const [product, setProduct] = useState(null);
-  const [selectedSize, setSelectedSize] = useState('');
-  const [quantity, setQuantity] = useState(1);
+  const [relatedProducts, setRelatedProducts] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [reviews, setReviews] = useState([]);
-  const [error, setError] = useState('');
+  const [error, setError] = useState(null);
+  const [selectedSize, setSelectedSize] = useState('');
+  const [selectedColor, setSelectedColor] = useState('');
+  const [quantity, setQuantity] = useState(1);
+  const [activeImage, setActiveImage] = useState(0);
+  const [showZoom, setShowZoom] = useState(false);
 
+  // Fetch product data
   useEffect(() => {
     const fetchProduct = async () => {
       try {
-        const response = await fetch(`http://localhost:8000/api/products/${id}/`);
-        if (response.ok) {
-          const data = await response.json();
-          setProduct(data);
-          if (data.sizes && data.sizes.length > 0) {
-            setSelectedSize(data.sizes[0]);
-          }
-        } else {
-          setError('Product not found');
+        setLoading(true);
+        const { data, error } = await api.get(`http://localhost:8000/api/products/${slug}/`);
+        
+        if (error) {
+          throw new Error(error.error || 'Product not found');
         }
-      } catch (error) {
-        console.error('Error fetching product:', error);
-        setError('Error loading product');
+        
+        setProduct(data);
+        
+        // If we have the product, fetch related products
+        if (data.id && data.category) {
+          fetchRelatedProducts(data.id, data.category);
+        }
+      } catch (err) {
+        console.error('Error fetching product:', err);
+        setError(err.message);
       } finally {
         setLoading(false);
       }
     };
-    // f4aa8de34b30b865844680bded4ec377e376abf8
 
-    const fetchReviews = async () => {
+    const fetchRelatedProducts = async (productId, categoryId) => {
       try {
-        const response = await fetch(`http://localhost:8000/api/reviews/?product=${id}`);
-        if (response.ok) {
-          const data = await response.json();
-          setReviews(data);
+        const { data } = await api.get(
+          `http://localhost:8000/api/products/?category=${categoryId}&exclude=${productId}&limit=4`
+        );
+        
+        // Handle different response formats
+        if (Array.isArray(data)) {
+          setRelatedProducts(data);
+        } else if (data.results && Array.isArray(data.results)) {
+          setRelatedProducts(data.results);
         }
-      } catch (error) {
-        console.error("Error fetching reviews:", error);
+      } catch (err) {
+        console.error('Error fetching related products:', err);
       }
     };
 
-    fetchProduct();
-    fetchReviews();
-  }, [id]);
+    if (slug) {
+      fetchProduct();
+    }
+  }, [slug]);
 
+  // 1. Add this useEffect to set default size when product loads
+  useEffect(() => {
+    if (product && product.sizes) {
+      // If there's only one size, auto-select it
+      if (product.sizes.length === 1) {
+        setSelectedSize(product.sizes[0]);
+      } else {
+        // Reset size selection when product changes
+        setSelectedSize('');
+      }
+    }
+  }, [product]);
+
+  // Handle cart addition
   const handleAddToCart = () => {
-    if (!selectedSize) {
-      alert('Please select a size');
+    // Only validate size if the product has size options
+    if (product.sizes && product.sizes.length > 0 && !selectedSize) {
+      showToast.error('Please select a size');
+      return;
+    }
+    
+    if (product.colors && product.colors.length > 0 && !selectedColor) {
+      showToast.error('Please select a color');
       return;
     }
     
     addToCart({
       ...product,
       quantity,
-      size: selectedSize,
+      // Only include selectedSize if it exists or product has sizes
+      selectedSize: product.sizes && product.sizes.length > 0 ? selectedSize : null,
+      selectedColor
     });
+    
+    // Show confirmation toast instead of alert
+    showToast.success('Product added to cart!');
   };
 
+  // Loading state
   if (loading) {
-    return <div className="text-center py-12">Loading product...</div>;
-  }
-
-  if (error) {
-    return <div className="text-center py-12 text-red-600">{error}</div>;
-  }
-
-  if (!product) {
-    return <div className="text-center py-12">Product not found</div>;
-  }
-
-  return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-        <div>
-          <img 
-            src={`http://localhost:8000${product.image}`} 
-            alt={product.name} 
-            className="w-full h-auto rounded-lg shadow-md"
-          />
-        </div>
-        
-        <div>
-          <h1 className="text-3xl font-bold mb-4">{product.name}</h1>
-          <p className="text-2xl font-semibold mb-4">${product.price}</p>
-          
-          <div className="mb-6">
-            <h2 className="text-lg font-medium mb-2">Description</h2>
-            <p className="text-gray-700">{product.description}</p>
+    return (
+      <div className="max-w-7xl mx-auto px-4 py-12 sm:px-6 lg:px-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-12 animate-pulse">
+          <div className="bg-gray-200 rounded-lg h-96"></div>
+          <div>
+            <div className="h-10 bg-gray-200 rounded w-3/4 mb-4"></div>
+            <div className="h-6 bg-gray-200 rounded w-1/4 mb-8"></div>
+            <div className="h-24 bg-gray-200 rounded mb-8"></div>
+            <div className="h-10 bg-gray-200 rounded mb-4"></div>
+            <div className="h-10 bg-gray-200 rounded mb-8"></div>
+            <div className="h-12 bg-gray-200 rounded"></div>
           </div>
-          
-          <div className="mb-6">
-            <h2 className="text-lg font-medium mb-2">Select Size</h2>
-            <div className="flex flex-wrap gap-2">
-              {product.sizes && product.sizes.map(size => (
-                <button
-                  key={size}
-                  className={`px-4 py-2 border rounded-md ${
-                    selectedSize === size 
-                      ? 'bg-black text-white border-black' 
-                      : 'border-gray-300 hover:border-black'
-                  }`}
-                  onClick={() => setSelectedSize(size)}
-                >
-                  {size}
-                </button>
-              ))}
+        </div>
+      </div>
+    );
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <div className="max-w-7xl mx-auto px-4 py-12 sm:px-6 lg:px-8 text-center">
+        <div className="bg-red-50 p-6 rounded-lg max-w-md mx-auto">
+          <svg className="h-12 w-12 text-red-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+          </svg>
+          <h2 className="text-xl font-medium text-red-800 mb-2">Product Not Found</h2>
+          <p className="text-red-700 mb-4">{error}</p>
+          <button 
+            onClick={() => navigate('/products')}
+            className="bg-black text-white px-6 py-2 rounded-md hover:bg-gray-800 transition-colors"
+          >
+            Browse All Products
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // No product data
+  if (!product) {
+    return (
+      <div className="max-w-7xl mx-auto px-4 py-12 sm:px-6 lg:px-8 text-center">
+        <p>No product information available</p>
+        <button 
+          onClick={() => navigate('/products')}
+          className="underline mt-4"
+        >
+          Browse all products
+        </button>
+      </div>
+    );
+  }
+
+  // Product detail view
+  return (
+    <div className="max-w-7xl mx-auto px-4 py-8 sm:px-6 lg:px-8">
+      {/* Breadcrumbs */}
+      <nav className="text-sm mb-6">
+        <ol className="flex items-center space-x-2">
+          <li><Link to="/" className="text-gray-500 hover:text-gray-700">Home</Link></li>
+          <li className="text-gray-400">/</li>
+          <li><Link to="/products" className="text-gray-500 hover:text-gray-700">Products</Link></li>
+          <li className="text-gray-400">/</li>
+          <li className="text-gray-900 font-medium">{product.name}</li>
+        </ol>
+      </nav>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
+        {/* Product Images */}
+        <div className="product-images space-y-4">
+          {/* Main Image */}
+          <div 
+            className="main-image relative rounded-lg overflow-hidden bg-gray-100"
+            onMouseEnter={() => setShowZoom(true)}
+            onMouseLeave={() => setShowZoom(false)}
+          >
+            {product.images && product.images.length > 0 ? (
+              <ImageWithFallback
+                src={product.images[activeImage] || product.image}
+                alt={product.name}
+                fallbackSrc="https://via.placeholder.com/600x800?text=No+Image"
+                className="w-full h-auto object-cover"
+              />
+            ) : (
+              <ImageWithFallback
+                src={product.image}
+                alt={product.name}
+                fallbackSrc="https://via.placeholder.com/600x800?text=No+Image"
+                className="w-full h-auto object-cover"
+              />
+            )}
+            
+            {/* Wishlist button */}
+            <div className="absolute top-4 right-4">
+              <WishlistButton productId={product.id} />
             </div>
           </div>
           
+          {/* Thumbnail Images */}
+          {product.images && product.images.length > 1 && (
+            <div className="thumbnails grid grid-cols-5 gap-2">
+              {product.images.map((image, index) => (
+                <button
+                  key={index}
+                  onClick={() => setActiveImage(index)}
+                  className={`border rounded-md overflow-hidden ${
+                    activeImage === index ? 'border-black' : 'border-gray-200'
+                  }`}
+                >
+                  <ImageWithFallback 
+                    src={image} 
+                    alt={`${product.name} - view ${index + 1}`} 
+                    className="w-full h-auto object-cover aspect-square"
+                  />
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        
+        {/* Product Details */}
+        <div className="product-details">
+          <h1 className="text-3xl font-light mb-2">{product.name}</h1>
+          
+          {/* Price */}
           <div className="mb-6">
-            <h2 className="text-lg font-medium mb-2">Quantity</h2>
-            <div className="flex items-center">
+            {product.sale_price && product.sale_price < product.price ? (
+              <div className="flex items-center">
+                <span className="text-xl font-medium text-red-600 mr-2">${product.sale_price}</span>
+                <span className="text-lg text-gray-500 line-through">${product.price}</span>
+                <span className="ml-2 bg-red-100 text-red-800 text-xs px-2 py-1 rounded">
+                  {Math.round((1 - product.sale_price / product.price) * 100)}% OFF
+                </span>
+              </div>
+            ) : (
+              <span className="text-xl font-medium">${product.price}</span>
+            )}
+          </div>
+          
+          {/* Availability */}
+          <div className="mb-6">
+            {product.in_stock ? (
+              <span className="text-green-600 flex items-center">
+                <svg className="h-5 w-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
+                </svg>
+                In Stock
+              </span>
+            ) : (
+              <span className="text-red-600 flex items-center">
+                <svg className="h-5 w-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
+                </svg>
+                Out of Stock
+              </span>
+            )}
+          </div>
+          
+          {/* Description */}
+          <div className="mb-8">
+            <p className="text-gray-700">{product.description}</p>
+          </div>
+          
+          {/* Color Selection */}
+          {product.colors && product.colors.length > 0 && (
+            <div className="mb-6">
+              <h3 className="text-sm uppercase tracking-wide mb-3">Color</h3>
+              <div className="flex flex-wrap gap-2">
+                {product.colors.map(color => (
+                  <button
+                    key={color.value}
+                    onClick={() => setSelectedColor(color.value)}
+                    className={`w-10 h-10 rounded-full border-2 ${
+                      selectedColor === color.value 
+                      ? 'border-black' 
+                      : 'border-transparent'
+                    }`}
+                    style={{ backgroundColor: color.value }}
+                    title={color.name}
+                  >
+                    <span className="sr-only">{color.name}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          
+          {/* Size Selection */}
+          {product.sizes && product.sizes.length > 0 && (
+            <div className="mb-6">
+              <h3 className="text-sm uppercase tracking-wide mb-3">Size</h3>
+              <div className="flex flex-wrap gap-2">
+                {product.sizes.map(size => {
+                  // Handle if size is an object or a string
+                  const sizeValue = typeof size === 'object' ? size.value || size.name : size;
+                  const sizeName = typeof size === 'object' ? size.name : size;
+                  
+                  return (
+                    <button
+                      key={sizeValue}
+                      onClick={() => setSelectedSize(sizeValue)}
+                      className={`px-4 py-2 border ${
+                        selectedSize === sizeValue 
+                        ? 'border-black bg-black text-white' 
+                        : 'border-gray-300 hover:border-black'
+                      }`}
+                    >
+                      {sizeName}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+          
+          {/* Quantity */}
+          <div className="mb-8">
+            <h3 className="text-sm uppercase tracking-wide mb-3">Quantity</h3>
+            <div className="flex border border-gray-300">
               <button 
-                className="w-10 h-10 border border-gray-300 rounded-l-md flex items-center justify-center hover:bg-gray-100"
-                onClick={() => quantity > 1 && setQuantity(quantity - 1)}
+                onClick={() => setQuantity(Math.max(1, quantity - 1))}
+                className="px-4 py-2 border-r border-gray-300"
+                disabled={quantity <= 1}
               >
                 -
               </button>
-              <span className="w-10 h-10 border-t border-b border-gray-300 flex items-center justify-center">
-                {quantity}
-              </span>
+              <div className="px-6 py-2">{quantity}</div>
               <button 
-                className="w-10 h-10 border border-gray-300 rounded-r-md flex items-center justify-center hover:bg-gray-100"
                 onClick={() => setQuantity(quantity + 1)}
+                className="px-4 py-2 border-l border-gray-300"
               >
                 +
               </button>
             </div>
           </div>
           
-          <div className="flex items-center space-x-4 mt-6">
-            <button
-              onClick={handleAddToCart}
-              disabled={!selectedSize}
-              className="flex-1 bg-black text-white py-3 px-6 rounded-md hover:bg-gray-800 disabled:bg-gray-400"
-            >
-              {selectedSize ? 'Add to Cart' : 'Select a Size'}
-            </button>
-            
-            <WishlistButton 
-              productId={product.id} 
-              className="flex items-center justify-center w-12 h-12 rounded-md border border-gray-300 hover:bg-gray-100"
-            />
+          {/* Add to Cart Button */}
+          <button
+            onClick={handleAddToCart}
+            disabled={!product.in_stock}
+            className={`w-full py-3 mb-4 uppercase tracking-wide ${
+              product.in_stock 
+              ? 'bg-black text-white hover:bg-gray-800' 
+              : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+            } transition-colors`}
+          >
+            {product.in_stock ? 'Add to Cart' : 'Out of Stock'}
+          </button>
+          
+          {/* Product Meta */}
+          <div className="border-t border-gray-200 pt-6 mt-8">
+            <div className="grid grid-cols-2 gap-4 text-sm">
+              <div>
+                <p className="text-gray-500">SKU:</p>
+                <p className="font-medium">{product.sku || 'N/A'}</p>
+              </div>
+              <div>
+                <p className="text-gray-500">Category:</p>
+                <p className="font-medium">{product.category_name || 'N/A'}</p>
+              </div>
+              {product.brand && (
+                <div>
+                  <p className="text-gray-500">Brand:</p>
+                  <p className="font-medium">{product.brand}</p>
+                </div>
+              )}
+              {product.material && (
+                <div>
+                  <p className="text-gray-500">Material:</p>
+                  <p className="font-medium">{product.material}</p>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
 
+      {/* Product Reviews */}
       <ReviewSection 
         productId={product.id} 
         isLoggedIn={!!localStorage.getItem('authToken')} 
       />
+      
+      {/* Related Products */}
+      {relatedProducts.length > 0 && (
+        <div className="mt-16">
+          <h2 className="text-2xl font-light mb-8">You May Also Like</h2>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+            {relatedProducts.map(relatedProduct => (
+              <Link 
+                key={relatedProduct.id} 
+                to={`/product/${relatedProduct.slug}`}
+                className="group"
+              >
+                <div className="aspect-h-1 aspect-w-1 w-full overflow-hidden rounded-lg bg-gray-100">
+                  <ImageWithFallback
+                    src={relatedProduct.image}
+                    alt={relatedProduct.name}
+                    className="h-full w-full object-cover object-center group-hover:opacity-75"
+                  />
+                </div>
+                <h3 className="mt-4 text-sm text-gray-700">{relatedProduct.name}</h3>
+                <p className="mt-1 text-lg font-medium text-gray-900">
+                  ${typeof relatedProduct.price === 'number' ? relatedProduct.price.toFixed(2) : parseFloat(relatedProduct.price || 0).toFixed(2)}
+                </p>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

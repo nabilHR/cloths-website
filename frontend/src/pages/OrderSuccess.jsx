@@ -1,188 +1,167 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { showToast } from '../utils/toast';
 
 function OrderSuccess() {
   const { orderId } = useParams();
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [error, setError] = useState(null);
   
   useEffect(() => {
     const fetchOrder = async () => {
+      if (!orderId) {
+        setLoading(false);
+        return;
+      }
+      
       try {
         const token = localStorage.getItem('authToken');
-        
-        if (!token) {
-          setError('Authentication required');
-          setLoading(false);
-          return;
-        }
-        
         const response = await fetch(`http://localhost:8000/api/orders/${orderId}/`, {
           headers: {
-            'Authorization': `Token ${token}`
+            'Authorization': `Bearer ${token}`
           }
         });
         
-        if (response.ok) {
-          const data = await response.json();
-          setOrder(data);
-        } else {
-          setError('Failed to load order details');
+        if (!response.ok) {
+          throw new Error(`Error ${response.status}: ${response.statusText}`);
         }
+        
+        const data = await response.json();
+        setOrder(data);
       } catch (err) {
-        setError('An error occurred while fetching your order');
-        console.error('Order fetch error:', err);
+        console.error('Error fetching order:', err);
+        setError(err.message);
       } finally {
         setLoading(false);
       }
     };
     
-    if (orderId) {
-      fetchOrder();
-    } else {
-      setLoading(false);
-    }
+    fetchOrder();
   }, [orderId]);
   
   if (loading) {
     return (
-      <div className="max-w-4xl mx-auto p-4 text-center">
-        <p className="text-xl">Loading your order...</p>
+      <div className="max-w-3xl mx-auto px-4 py-16 text-center">
+        <div className="animate-spin h-12 w-12 border-4 border-black border-t-transparent rounded-full mx-auto mb-4"></div>
+        <p>Loading order details...</p>
       </div>
     );
   }
   
   if (error) {
     return (
-      <div className="max-w-4xl mx-auto p-4">
-        <div className="bg-red-50 text-red-800 p-4 rounded-md mb-6">
-          {error}
+      <div className="max-w-3xl mx-auto px-4 py-16 text-center">
+        <div className="bg-red-50 p-4 rounded-md mb-8">
+          <h2 className="text-xl font-medium text-red-800 mb-2">Error loading order</h2>
+          <p className="text-red-700">{error}</p>
         </div>
-        <Link to="/" className="text-blue-600 hover:text-blue-800">
-          Return to Home
-        </Link>
-      </div>
-    );
-  }
-  
-  // No orderId means a simple success page (no order details)
-  if (!orderId) {
-    return (
-      <div className="max-w-4xl mx-auto p-4">
-        <div className="bg-green-50 text-green-800 p-6 rounded-lg mb-8 text-center">
-          <h2 className="text-2xl font-bold mb-2">Thank You for Your Order!</h2>
-          <p>A confirmation email has been sent to your email address.</p>
-        </div>
-        
-        <div className="text-center">
-          <Link to="/" className="inline-block px-6 py-3 bg-black text-white rounded-md hover:bg-gray-800 transition">
-            Continue Shopping
-          </Link>
-        </div>
-      </div>
-    );
-  }
-  
-  if (!order) {
-    return (
-      <div className="max-w-4xl mx-auto p-4">
-        <div className="bg-yellow-50 text-yellow-800 p-4 rounded-md mb-6">
-          Order not found
-        </div>
-        <Link to="/" className="text-blue-600 hover:text-blue-800">
-          Return to Home
+        <Link to="/account" className="text-black underline">
+          Go to my account
         </Link>
       </div>
     );
   }
   
   return (
-    <div className="max-w-4xl mx-auto p-4">
-      <div className="bg-green-50 text-green-800 p-6 rounded-lg mb-8 text-center">
-        <h2 className="text-2xl font-bold mb-2">Thank You for Your Order!</h2>
-        <p>A confirmation email has been sent to your email address.</p>
-        <p className="mt-2">Order Number: <span className="font-mono font-bold">{order.id}</span></p>
+    <div className="max-w-3xl mx-auto px-4 py-16">
+      <div className="text-center mb-12">
+        <div className="inline-flex items-center justify-center w-16 h-16 bg-green-100 rounded-full mb-4">
+          <svg className="h-8 w-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
+          </svg>
+        </div>
+        <h1 className="text-3xl font-medium mb-2">Thank You for Your Order!</h1>
+        <p className="text-gray-600">
+          {order ? `Order #${order.id} has been placed successfully.` : 'Your order has been placed successfully.'}
+        </p>
       </div>
       
-      <div className="bg-white rounded-lg shadow-sm overflow-hidden mb-8">
-        <div className="p-6 border-b">
-          <h2 className="text-xl font-semibold">Order Details</h2>
-        </div>
-        
-        <div className="p-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <h3 className="font-medium mb-2">Shipping Information</h3>
-              <p>{order.shipping_address}</p>
-              <p>{order.shipping_city}, {order.shipping_postal_code}</p>
-              <p>{order.shipping_country}</p>
-            </div>
-            
-            <div>
-              <h3 className="font-medium mb-2">Order Summary</h3>
-              <p>Order Date: {new Date(order.created_at).toLocaleDateString()}</p>
-              <p>Status: <span className="capitalize">{order.status}</span></p>
-              <p>Payment Method: Credit Card</p>
-              {order.payment_details?.last_four && (
-                <p>Card ending in: {order.payment_details.last_four}</p>
-              )}
-            </div>
+      {order && (
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+          <div className="border-b border-gray-200 px-6 py-4">
+            <h2 className="text-lg font-medium">Order Details</h2>
           </div>
-        </div>
-      </div>
-      
-      <div className="bg-white rounded-lg shadow-sm overflow-hidden mb-8">
-        <div className="p-6 border-b">
-          <h2 className="text-xl font-semibold">Items</h2>
-        </div>
-        
-        <div className="divide-y">
-          {order.items?.map((item) => (
-            <div key={item.id} className="p-6 flex items-center">
-              <div className="w-16 h-16 flex-shrink-0 mr-4">
-                <img 
-                  src={item.product.image} 
-                  alt={item.product.name}
-                  className="w-full h-full object-cover rounded"
-                />
+          
+          <div className="px-6 py-4 border-b border-gray-200">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <h3 className="text-sm text-gray-500 mb-1">Order Number</h3>
+                <p className="font-medium">{order.id}</p>
               </div>
-              
-              <div className="flex-grow">
-                <h3 className="font-medium">{item.product.name}</h3>
-                <p className="text-sm text-gray-500">
-                  Size: {item.size} | Qty: {item.quantity}
+              <div>
+                <h3 className="text-sm text-gray-500 mb-1">Date</h3>
+                <p className="font-medium">{new Date(order.created_at).toLocaleDateString()}</p>
+              </div>
+              <div>
+                <h3 className="text-sm text-gray-500 mb-1">Total</h3>
+                <p className="font-medium">${order.total}</p>
+              </div>
+              <div>
+                <h3 className="text-sm text-gray-500 mb-1">Payment Method</h3>
+                <p className="font-medium">
+                  {order.payment_method === 'credit_card' ? 'Credit Card' : 'PayPal'}
                 </p>
               </div>
-              
-              <div className="font-medium">
-                ${(parseFloat(item.price) * item.quantity).toFixed(2)}
-              </div>
             </div>
-          ))}
-        </div>
-        
-        <div className="p-6 bg-gray-50">
-          <div className="flex justify-between mb-2">
-            <span>Subtotal</span>
-            <span>${parseFloat(order.subtotal).toFixed(2)}</span>
           </div>
           
-          <div className="flex justify-between mb-2">
-            <span>Shipping</span>
-            <span>${parseFloat(order.shipping_cost).toFixed(2)}</span>
+          <div className="px-6 py-4">
+            <h3 className="text-sm text-gray-500 mb-2">Items</h3>
+            <div className="space-y-4">
+              {order.items.map((item) => (
+                <div key={item.id} className="flex items-start">
+                  <div className="h-16 w-16 flex-shrink-0 overflow-hidden rounded-md border border-gray-200">
+                    <img
+                      src={item.product_image || 'https://via.placeholder.com/100x100'}
+                      alt={item.product_name}
+                      className="h-full w-full object-cover object-center"
+                    />
+                  </div>
+                  <div className="ml-4 flex-1">
+                    <div className="flex justify-between">
+                      <div>
+                        <h4 className="font-medium">{item.product_name}</h4>
+                        <p className="mt-1 text-sm text-gray-500">
+                          {item.size && `Size: ${item.size}`}
+                          {item.color && item.size && ' | '}
+                          {item.color && `Color: ${item.color}`}
+                        </p>
+                      </div>
+                      <p className="text-sm font-medium">${item.price} x {item.quantity}</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
           
-          <div className="flex justify-between font-bold text-lg border-t pt-4 mt-4">
-            <span>Total</span>
-            <span>${parseFloat(order.total).toFixed(2)}</span>
+          <div className="bg-gray-50 px-6 py-4">
+            <h3 className="text-sm text-gray-500 mb-2">Shipping Address</h3>
+            <address className="not-italic">
+              <p>{order.shipping_address.full_name}</p>
+              <p>{order.shipping_address.address}</p>
+              <p>
+                {order.shipping_address.city}, {order.shipping_address.state} {order.shipping_address.zip_code}
+              </p>
+              <p>{order.shipping_address.country}</p>
+            </address>
           </div>
         </div>
-      </div>
+      )}
       
-      <div className="text-center">
-        <Link to="/" className="inline-block px-6 py-3 bg-black text-white rounded-md hover:bg-gray-800 transition">
+      <div className="mt-8 flex flex-col md:flex-row items-center justify-center space-y-4 md:space-y-0 md:space-x-6">
+        <Link
+          to="/"
+          className="text-blue-600 hover:underline"
+        >
           Continue Shopping
+        </Link>
+        <Link
+          to="/order-history"
+          className="px-6 py-2 bg-black text-white rounded-md text-sm font-medium hover:bg-gray-800"
+        >
+          View Order History
         </Link>
       </div>
     </div>
