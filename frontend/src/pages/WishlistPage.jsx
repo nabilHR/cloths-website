@@ -2,45 +2,44 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
+import { showToast } from '../utils/toast';
 
 function WishlistPage() {
-  const [wishlistItems, setWishlistItems] = useState([]);
+  const [wishlistItems, setWishlistItems] = useState([]);  // Initialize as empty array
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
   const { addToCart } = useCart();
   
   useEffect(() => {
-    const fetchWishlist = async () => {
-      try {
-        const token = localStorage.getItem('authToken');
-        if (!token) {
-          setError('You must be logged in to view your wishlist');
-          setLoading(false);
-          return;
-        }
-        
-        const response = await fetch('http://localhost:8000/api/wishlist/', {
-          headers: {
-            'Authorization': `Token ${token}`
-          }
-        });
-        
-        if (response.ok) {
-          const data = await response.json();
-          setWishlistItems(data);
-        } else {
-          setError('Failed to load wishlist');
-        }
-      } catch (err) {
-        setError('An error occurred');
-        console.error(err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    
     fetchWishlist();
   }, []);
+
+  const fetchWishlist = async () => {
+    try {
+      const token = localStorage.getItem('authToken');
+      if (!token) return;
+      
+      const response = await fetch('http://localhost:8000/api/wishlist/', {
+        headers: {
+          'Authorization': `Token ${token}`  // Use Token prefix, not Bearer
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        // Handle both array and object responses
+        const items = Array.isArray(data) ? data : (data.results || []);
+        setWishlistItems(items);
+      } else {
+        console.error('Failed to fetch wishlist');
+        setWishlistItems([]);  // Set empty array on error
+      }
+    } catch (error) {
+      console.error('Error fetching wishlist:', error);
+      setWishlistItems([]);  // Set empty array on error
+    } finally {
+      setLoading(false);
+    }
+  };
   
   const removeFromWishlist = async (itemId) => {
     try {
@@ -55,9 +54,13 @@ function WishlistPage() {
       
       if (response.ok) {
         setWishlistItems(prev => prev.filter(item => item.id !== itemId));
+        showToast('Item removed from wishlist', 'success');
+      } else {
+        showToast('Failed to remove item', 'error');
       }
     } catch (err) {
       console.error('Error removing item:', err);
+      showToast('Error removing item', 'error');
     }
   };
   
@@ -78,23 +81,7 @@ function WishlistPage() {
     <div className="max-w-6xl mx-auto p-4">
       <h1 className="text-2xl font-bold mb-6">My Wishlist</h1>
       
-      {error && (
-        <div className="bg-red-50 text-red-700 p-4 rounded-md mb-6">
-          {error}
-        </div>
-      )}
-      
-      {!error && wishlistItems.length === 0 ? (
-        <div className="text-center py-12 bg-white rounded-lg shadow-sm">
-          <p className="text-gray-500 mb-6">Your wishlist is empty</p>
-          <Link 
-            to="/" 
-            className="inline-block bg-black text-white px-6 py-2 rounded-md hover:bg-gray-800"
-          >
-            Continue Shopping
-          </Link>
-        </div>
-      ) : (
+      {Array.isArray(wishlistItems) && wishlistItems.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {wishlistItems.map(item => (
             <div key={item.id} className="bg-white rounded-lg shadow-sm overflow-hidden">
@@ -134,6 +121,16 @@ function WishlistPage() {
               </div>
             </div>
           ))}
+        </div>
+      ) : (
+        <div className="text-center py-12 bg-white rounded-lg shadow-sm">
+          <p className="text-gray-500 mb-6">Your wishlist is empty</p>
+          <Link 
+            to="/" 
+            className="inline-block bg-black text-white px-6 py-2 rounded-md hover:bg-gray-800"
+          >
+            Continue Shopping
+          </Link>
         </div>
       )}
     </div>

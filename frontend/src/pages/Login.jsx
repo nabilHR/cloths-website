@@ -28,25 +28,28 @@ function Login() {
     setError('');
     
     const { data, error: apiError } = await api.post(
-      'http://localhost:8000/api/users/login/',
-      formData,
-      { auth: false } // Don't include auth headers for login
+        'http://localhost:8000/api/auth/login/',
+        {
+            username: formData.email,
+            password: formData.password
+        },
+        { auth: false }
     );
     
     setLoading(false);
     
     if (apiError) {
-      setError(apiError.details || 'Login failed. Please check your credentials.');
-      return;
+        setError(apiError.details || 'Login failed. Please check your credentials.');
+        return;
     }
     
-    if (data && (data.token || data.access)) {
-      // Successfully logged in
-      login(data, data.user);
+    if (data && data.token && data.user) {
+      // Pass the token and user object separately
+      login(data.token, data.user);
       showToast.success('Logged in successfully');
       navigate('/account');
     } else {
-      setError('Unexpected response from server');
+      setError('Invalid response from server');
     }
   };
 

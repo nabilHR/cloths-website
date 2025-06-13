@@ -152,16 +152,39 @@ function BulkUpload() {
   const parseProductRow = (cols, categories) => {
     // Create product object from columns
     const product = {
-      name: cols[0].replace(/"/g, '').trim(),
-      price: parseFloat(cols[1].replace(/[^0-9.]/g, '')),
-      description: cols.length > 2 ? cols[2].replace(/"/g, '').trim() : '',
-      sizes: cols.length > 3 
-        ? cols[3].replace(/"/g, '').split(',').map(s => s.trim())
-        : ['S', 'M', 'L'],
-      category: categories.length > 0 ? categories[0].id : "",
-      slug: cols[0].replace(/"/g, '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+      name: cols[0]?.replace(/"/g, '').trim() || '',
+      price: parseFloat(cols[1]?.replace(/[^0-9.]/g, '') || 0),
+      description: cols[2]?.replace(/"/g, '').trim() || '',
+      categoryName: cols[3]?.replace(/"/g, '').trim() || '',
+      subCategoryName: cols[4]?.replace(/"/g, '').trim() || '',
+      sizes: cols[5] ? cols[5].replace(/"/g, '').split(',').map(s => s.trim()) : [],
+      colors: cols[6] ? cols[6].replace(/"/g, '').split(',').map(c => c.trim()) : [],
+      stock: parseInt(cols[7] || '0', 10),
+      sku: cols[8]?.replace(/"/g, '').trim() || '',
+      category: '', // Will be set after lookup
+      subcategory: '', // Will be set after lookup
+      slug: cols[0]?.replace(/"/g, '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-') || '',
       in_stock: true
     };
+    
+    // Find category by name
+    const categoryObj = categories.find(c => 
+      c.name.toLowerCase() === product.categoryName.toLowerCase()
+    );
+    
+    if (categoryObj) {
+      product.category = categoryObj.id;
+      
+      // Find subcategory if available
+      if (categoryObj.subcategories) {
+        const subCategoryObj = categoryObj.subcategories.find(sc => 
+          sc.name.toLowerCase() === product.subCategoryName.toLowerCase()
+        );
+        if (subCategoryObj) {
+          product.subcategory = subCategoryObj.id;
+        }
+      }
+    }
     
     return product;
   };
@@ -356,7 +379,7 @@ function BulkUpload() {
       }
       
       // Send request
-      const response = await fetch('http://localhost:8000/api/bulk-products/', {
+      const response = await fetch('http://localhost:8000/api/bulk-upload/', {
         method: 'POST',
         headers: {
           'Authorization': `Token ${token}`

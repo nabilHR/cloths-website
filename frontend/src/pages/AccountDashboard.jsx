@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { showToast } from '../utils/toast';
 
 function AccountDashboard() {
-  const [userData, setUserData] = useState(null);
+  const [userData, setUserData] = useState({});
   const [recentOrders, setRecentOrders] = useState([]);
   const [addresses, setAddresses] = useState([]);
   const [wishlistItems, setWishlistItems] = useState([]);
@@ -14,72 +14,35 @@ function AccountDashboard() {
   useEffect(() => {
     const fetchUserData = async () => {
       try {
+        // First use localStorage data for immediate display
+        const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
+        setUserData(storedUser);
+        
         const token = localStorage.getItem('authToken');
-        if (!token) {
-          navigate('/login');
-          return;
-        }
+        if (!token) return;
         
-        // Fetch user profile
-        const profileResponse = await fetch('http://localhost:8000/api/users/profile/', {
+        // Fetch latest user data from API
+        const response = await fetch('http://localhost:8000/api/users/me/', {
           headers: {
-            'Authorization': `Bearer ${token}`
+            'Authorization': `Token ${token}`
           }
         });
         
-        if (!profileResponse.ok) {
-          throw new Error('Failed to fetch profile data');
-        }
-        
-        const profileData = await profileResponse.json();
-        setUserData(profileData);
-        
-        // Fetch recent orders
-        const ordersResponse = await fetch('http://localhost:8000/api/orders/?limit=3', {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        });
-        
-        if (ordersResponse.ok) {
-          const ordersData = await ordersResponse.json();
-          setRecentOrders(Array.isArray(ordersData) ? ordersData : ordersData.results || []);
-        }
-        
-        // Fetch addresses
-        const addressesResponse = await fetch('http://localhost:8000/api/addresses/', {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        });
-        
-        if (addressesResponse.ok) {
-          const addressesData = await addressesResponse.json();
-          setAddresses(Array.isArray(addressesData) ? addressesData : addressesData.results || []);
-        }
-        
-        // Fetch wishlist items
-        const wishlistResponse = await fetch('http://localhost:8000/api/wishlist/', {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        });
-        
-        if (wishlistResponse.ok) {
-          const wishlistData = await wishlistResponse.json();
-          setWishlistItems(Array.isArray(wishlistData) ? wishlistData : wishlistData.results || []);
+        if (response.ok) {
+          const data = await response.json();
+          setUserData(data);
+          localStorage.setItem('user', JSON.stringify(data));
         }
       } catch (error) {
-        console.error('Error fetching user data:', error);
-        showToast.error('Failed to load account data');
+        console.error('Error:', error);
       } finally {
         setLoading(false);
       }
     };
     
     fetchUserData();
-  }, [navigate]);
-  
+  }, []);
+
   const handleLogout = () => {
     localStorage.removeItem('authToken');
     showToast.success('Logged out successfully');

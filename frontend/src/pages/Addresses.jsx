@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 
 function Addresses() {
-  const [addresses, setAddresses] = useState([]);
+  const [addresses, setAddresses] = useState([]);  // Initialize as empty array
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showForm, setShowForm] = useState(false);
@@ -370,18 +370,8 @@ function Addresses() {
         </div>
       )}
 
-      {addresses.length === 0 && !loading ? (
-        <div className="bg-white rounded-lg shadow-sm p-8 text-center">
-          <p className="text-gray-600 mb-4">You haven't saved any addresses yet.</p>
-          <button
-            onClick={() => setShowForm(true)}
-            className="px-4 py-2 bg-black text-white rounded-md hover:bg-gray-800"
-          >
-            Add Your First Address
-          </button>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      {Array.isArray(addresses) && addresses.length > 0 ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {addresses.map(address => (
             <div key={address.id} className={`bg-white rounded-lg shadow-sm p-6 border-2 ${address.is_default ? 'border-black' : 'border-transparent'}`}>
               {address.is_default && (
@@ -419,6 +409,8 @@ function Addresses() {
             </div>
           ))}
         </div>
+      ) : (
+        <p>No addresses found. Add a new address to get started.</p>
       )}
     </div>
   );

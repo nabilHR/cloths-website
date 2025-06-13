@@ -1,3 +1,4 @@
+from django.contrib.auth.models import User  # Add this import
 from rest_framework import viewsets, serializers
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -31,7 +32,7 @@ import uuid
 import traceback
 from django.db.models import Q
 from .pagination import CustomPagination
-from django.shortcuts import render, redirect
+from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib import messages
 from .models import Product, ProductImage, Category, SubCategory
@@ -476,11 +477,29 @@ class WishlistViewSet(viewsets.ModelViewSet):
         return Response({'detail': 'Product removed from wishlist'}, status=200)
 
 class UserProfileViewSet(viewsets.ModelViewSet):
-    serializer_class = UserProfileSerializer
     permission_classes = [IsAuthenticated]
+    serializer_class = UserProfileSerializer
     
-    def get_queryset(self):
-        return UserProfile.objects.filter(user=self.request.user)
+    @action(detail=False, methods=['get'])
+    def me(self, request):
+        """Get current user's profile"""
+        serializer = self.get_serializer(request.user)
+        return Response({
+            'id': request.user.id,
+            'username': request.user.username,
+            'email': request.user.email,
+            'first_name': request.user.first_name,
+            'last_name': request.user.last_name
+        })
+    
+    @action(detail=False, methods=['put'])
+    def me(self, request):
+        """Update current user's profile"""
+        serializer = self.get_serializer(request.user, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=400)
 
 class AddressViewSet(viewsets.ModelViewSet):
     serializer_class = AddressSerializer
@@ -550,3 +569,75 @@ def fancy_product_upload(request):
         'categories': categories,
         'title': 'Add New Product'
     })
+
+def product_list(request):
+    """View function for listing all products"""
+    products = Product.objects.filter(in_stock=True)
+    return render(request, 'store/product_list.html', {'products': products})
+
+def product_detail(request, slug):
+    """View function for displaying a single product"""
+    product = get_object_or_404(Product, slug=slug, in_stock=True)
+    return render(request, 'store/product_detail.html', {'product': product})
+
+
+class OrderViewSet(viewsets.ModelViewSet):
+    serializer_class = OrderSerializer
+    permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        # Return only the current user's orders
+        return Order.objects.filter(user=self.request.user)
+
+class UserViewSet(viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticated]
+    queryset = User.objects.all()
+    
+    @action(detail=False, methods=['get', 'put'])  # Add 'put' to allowed methods
+    def me(self, request):
+        """Get or update current user profile"""
+        user = request.user
+        
+        # Handle PUT requests (updates)
+        if request.method == 'PUT':
+            # Extract data from request
+            data = request.data
+            
+            # Only update fields that are provided and not empty
+            if 'first_name' in data and data['first_name']:
+                user.first_name = data['first_name']
+            
+            if 'last_name' in data and data['last_name']:
+                user.last_name = data['last_name']
+            
+            if 'username' in data and data['username']:
+                user.username = data['username']
+            
+            # Save the user object
+            user.save()
+            
+            # Return the updated user data
+            return Response({
+                'id': user.id,
+                'email': user.email,
+                'first_name': user.first_name,
+                'last_name': user.last_name,
+                'username': user.username,
+                'bio': getattr(user.profile, 'bio', None) if hasattr(user, 'profile') else None,
+                'profile_picture': getattr(user.profile, 'profile_picture', None) if hasattr(user, 'profile') else None,
+                'phone_number': getattr(user.profile, 'phone_number', None) if hasattr(user, 'profile') else None,
+                'date_joined': user.date_joined
+            })
+        
+        # Handle GET requests (fetching profile)
+        return Response({
+            'id': user.id,
+            'email': user.email,
+            'first_name': user.first_name,
+            'last_name': user.last_name,
+            'username': user.username,
+            'bio': getattr(user.profile, 'bio', None) if hasattr(user, 'profile') else None,
+            'profile_picture': getattr(user.profile, 'profile_picture', None) if hasattr(user, 'profile') else None,
+            'phone_number': getattr(user.profile, 'phone_number', None) if hasattr(user, 'profile') else None,
+            'date_joined': user.date_joined
+        })

@@ -14,30 +14,46 @@ export function AuthProvider({ children }) {
   
   useEffect(() => {
     const checkAuthStatus = async () => {
-      const token = localStorage.getItem('authToken');
-      
-      if (!token) {
-        setIsAuthenticated(false);
-        setUser(null);
-        setLoading(false);
-        return;
-      }
+      setLoading(true);
       
       try {
-        // Use our new API utility
-        const { data, error } = await api.get('http://localhost:8000/api/users/profile/');
+        // Check if token exists in localStorage
+        const token = localStorage.getItem('authToken');
+        const userData = JSON.parse(localStorage.getItem('user') || '{}');
         
-        if (error) {
-          localStorage.removeItem('authToken');
+        if (!token) {
+          // No token found, user is not authenticated
           setIsAuthenticated(false);
           setUser(null);
-        } else {
-          setUser(data);
-          setIsAuthenticated(true);
+          return;
         }
+        
+        // If we have a token, consider the user authenticated
+        setIsAuthenticated(true);
+        setUser(userData);
+        
+        // Test if token is still valid by making a simple API call
+        try {
+          const testResponse = await fetch('http://localhost:8000/api/users/profile/', {
+            headers: {
+              'Authorization': `Token ${token}`
+            }
+          });
+          
+          if (!testResponse.ok) {
+            // Token is invalid, clear auth state
+            throw new Error('Invalid token');
+          }
+        } catch (error) {
+          console.error('Token validation failed:', error);
+          logout(); // Call your logout function
+        }
+        
       } catch (error) {
         console.error('Auth check error:', error);
+        // Clear invalid auth data
         localStorage.removeItem('authToken');
+        localStorage.removeItem('user');
         setIsAuthenticated(false);
         setUser(null);
       } finally {
@@ -48,31 +64,22 @@ export function AuthProvider({ children }) {
     checkAuthStatus();
   }, []);
   
-  const login = (tokenData, userData) => {
-    // Handle different token response formats
-    const token = typeof tokenData === 'string' ? tokenData : tokenData?.access || tokenData?.token;
-    const refresh = tokenData?.refresh;
-    
-    if (token) {
-      localStorage.setItem('authToken', token);
-      
-      if (refresh) {
-        localStorage.setItem('refreshToken', refresh);
-        localStorage.setItem('tokenExpiry', new Date(Date.now() + 55 * 60 * 1000).toString());
-        setRefreshToken(refresh);
-      }
-      
-      setUser(userData);
-      setIsAuthenticated(true);
-    } else {
-      console.error('Invalid token data received:', tokenData);
-    }
+  const login = (token, userData) => {
+    console.log("Storing user data:", userData);
+    localStorage.setItem('authToken', token);
+    localStorage.setItem('user', JSON.stringify(userData));
+    setUser(userData);
+    setIsAuthenticated(true);
   };
   
   const logout = () => {
+    // Clear ALL auth-related localStorage items
     localStorage.removeItem('authToken');
     localStorage.removeItem('refreshToken');
+    localStorage.removeItem('user');
     localStorage.removeItem('tokenExpiry');
+    
+    // Reset auth state
     setRefreshToken(null);
     setUser(null);
     setIsAuthenticated(false);

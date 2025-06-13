@@ -2,10 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 
 function OrderHistory() {
-  const [orders, setOrders] = useState([]);
+  const [orders, setOrders] = useState([]); // Initialize as empty array
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [selectedOrder, setSelectedOrder] = useState(null);
+  const [items, setItems] = useState([]);  // Initialize as empty array
 
   useEffect(() => {
     const fetchOrders = async () => {
@@ -83,20 +84,6 @@ function OrderHistory() {
     );
   }
 
-  if (orders.length === 0) {
-    return (
-      <div className="max-w-6xl mx-auto p-4">
-        <h1 className="text-2xl font-bold mb-6">Order History</h1>
-        <div className="bg-white rounded-lg shadow-sm p-8 text-center">
-          <p className="text-gray-600 mb-4">You haven't placed any orders yet.</p>
-          <Link to="/" className="px-4 py-2 bg-black text-white rounded-md hover:bg-gray-800 inline-block">
-            Start Shopping
-          </Link>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="max-w-6xl mx-auto p-4">
       <h1 className="text-2xl font-bold mb-6">Order History</h1>
@@ -124,32 +111,40 @@ function OrderHistory() {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {orders.map((order) => (
-                <tr key={order.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                    #{order.id}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {formatDate(order.created_at)}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusBadgeClass(order.status)}`}>
-                      {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    ${parseFloat(order.total).toFixed(2)}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm">
-                    <button
-                      onClick={() => setSelectedOrder(order.id === selectedOrder ? null : order)}
-                      className="text-blue-600 hover:text-blue-900"
-                    >
-                      {order.id === selectedOrder?.id ? 'Hide Details' : 'View Details'}
-                    </button>
+              {Array.isArray(orders) && orders.length > 0 ? (
+                orders.map((order) => (
+                  <tr key={order.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                      #{order.id}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {formatDate(order.created_at)}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusBadgeClass(order.status)}`}>
+                        {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      ${parseFloat(order.total).toFixed(2)}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm">
+                      <button
+                        onClick={() => setSelectedOrder(order.id === selectedOrder ? null : order)}
+                        className="text-blue-600 hover:text-blue-900"
+                      >
+                        {order.id === selectedOrder?.id ? 'Hide Details' : 'View Details'}
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan="5" className="px-6 py-4 text-center text-sm text-gray-500">
+                    No orders found.
                   </td>
                 </tr>
-              ))}
+              )}
             </tbody>
           </table>
         </div>
@@ -229,6 +224,20 @@ function OrderHistory() {
               </div>
             </div>
           </div>
+        )}
+      </div>
+
+      <div>
+        {Array.isArray(items) && items.length > 0 ? (
+          <div>
+            {items.map(item => (
+              <div key={item.id}>
+                {/* Item content */}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p>No items found</p>
         )}
       </div>
     </div>

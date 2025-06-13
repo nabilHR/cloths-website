@@ -3,16 +3,16 @@ import { useNavigate } from 'react-router-dom';
 import { showToast } from '../utils/toast';
 
 function ProfileEdit() {
-  const [userData, setUserData] = useState({
+  const [formData, setFormData] = useState({
     first_name: '',
     last_name: '',
-    email: '',
-    phone: ''
+    username: ''
   });
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const navigate = useNavigate();
   
+  const [originalData, setOriginalData] = useState({}); // Store original values
+  const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
+
   useEffect(() => {
     const fetchUserData = async () => {
       try {
@@ -22,9 +22,9 @@ function ProfileEdit() {
           return;
         }
         
-        const response = await fetch('http://localhost:8000/api/users/profile/', {
+        const response = await fetch('http://localhost:8000/api/users/me/', {
           headers: {
-            'Authorization': `Bearer ${token}`
+            'Authorization': `Token ${token}`
           }
         });
         
@@ -32,16 +32,19 @@ function ProfileEdit() {
           throw new Error('Failed to fetch profile data');
         }
         
-        const data = await response.json();
-        setUserData({
-          first_name: data.first_name || '',
-          last_name: data.last_name || '',
-          email: data.email || '',
-          phone: data.phone || ''
+        const userData = await response.json();
+        // Set original data for comparison later
+        setOriginalData(userData);
+        
+        // Set the form data with user data
+        setFormData({
+          first_name: userData.first_name || '',
+          last_name: userData.last_name || '',
+          username: userData.username || ''
         });
       } catch (error) {
         console.error('Error fetching user data:', error);
-        showToast.error('Failed to load profile data');
+        showToast.error('Could not load your profile');
       } finally {
         setLoading(false);
       }
@@ -49,188 +52,137 @@ function ProfileEdit() {
     
     fetchUserData();
   }, [navigate]);
-  
-  const handleInputChange = (e) => {
+
+  const handleChange = (e) => {
     const { name, value } = e.target;
-    setUserData(prev => ({ ...prev, [name]: value }));
+    setFormData(prev => ({
+      ...prev,
+      [name]: value
+    }));
   };
-  
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setSaving(true);
-    
     try {
       const token = localStorage.getItem('authToken');
-      const response = await fetch('http://localhost:8000/api/users/profile/', {
+      if (!token) {
+        navigate('/login');
+        return;
+      }
+      
+      // Only include fields that have changed and are not empty
+      const changedData = {};
+      
+      if (formData.first_name !== originalData.first_name && formData.first_name !== '') {
+        changedData.first_name = formData.first_name;
+      }
+      
+      if (formData.last_name !== originalData.last_name && formData.last_name !== '') {
+        changedData.last_name = formData.last_name;
+      }
+      
+      if (formData.username !== originalData.username && formData.username !== '') {
+        changedData.username = formData.username;
+      }
+      
+      // If no fields were changed, don't make the request
+      if (Object.keys(changedData).length === 0) {
+        showToast.info('No changes were made');
+        navigate('/profile');
+        return;
+      }
+      
+      console.log("Sending profile update data:", changedData);
+      
+      const response = await fetch('http://localhost:8000/api/users/me/', {
         method: 'PUT',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          'Authorization': `Token ${token}`,
+          'Content-Type': 'application/json'
         },
-        body: JSON.stringify(userData)
+        body: JSON.stringify(changedData)  // Only send changed fields
       });
       
       if (!response.ok) {
         throw new Error('Failed to update profile');
       }
       
+      const updatedData = await response.json();
+      
+      // Update localStorage with new user data
+      const user = JSON.parse(localStorage.getItem('user') || '{}');
+      const updatedUser = { ...user, ...updatedData };
+      localStorage.setItem('user', JSON.stringify(updatedUser));
+      
       showToast.success('Profile updated successfully');
-      navigate('/account');
+      navigate('/profile');
     } catch (error) {
       console.error('Error updating profile:', error);
       showToast.error('Failed to update profile');
-    } finally {
-      setSaving(false);
     }
   };
-  
-  if (loading) {
-    return (
-      <div className="max-w-3xl mx-auto px-4 py-12">
-        <div className="animate-pulse space-y-4">
-          <div className="h-10 bg-gray-200 rounded w-1/4"></div>
-          <div className="h-64 bg-gray-200 rounded"></div>
-        </div>
-      </div>
-    );
-  }
-  
+
   return (
-    <div className="max-w-3xl mx-auto px-4 py-12">
-      <h1 className="text-3xl font-light mb-8">Edit Profile</h1>
+    <div className="max-w-md mx-auto p-4">
+      <h1 className="text-2xl font-bold mb-6">Edit Profile</h1>
       
-      <div className="bg-white p-6 rounded-lg border border-gray-200">
-        <form onSubmit={handleSubmit}>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-            <div>
-              <label htmlFor="first_name" className="block text-sm font-medium text-gray-700 mb-1">
-                First Name
-              </label>
-              <input
-                type="text"
-                id="first_name"
-                name="first_name"
-                value={userData.first_name}
-                onChange={handleInputChange}
-                className="w-full rounded-md border-gray-300 shadow-sm focus:border-black focus:ring-black"
-              />
-            </div>
-            
-            <div>
-              <label htmlFor="last_name" className="block text-sm font-medium text-gray-700 mb-1">
-                Last Name
-              </label>
-              <input
-                type="text"
-                id="last_name"
-                name="last_name"
-                value={userData.last_name}
-                onChange={handleInputChange}
-                className="w-full rounded-md border-gray-300 shadow-sm focus:border-black focus:ring-black"
-              />
-            </div>
-            
-            <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
-                Email Address
-              </label>
-              <input
-                type="email"
-                id="email"
-                name="email"
-                value={userData.email}
-                onChange={handleInputChange}
-                className="w-full rounded-md border-gray-300 shadow-sm focus:border-black focus:ring-black"
-                readOnly
-              />
-              <p className="mt-1 text-xs text-gray-500">Email cannot be changed</p>
-            </div>
-            
-            <div>
-              <label htmlFor="phone" className="block text-sm font-medium text-gray-700 mb-1">
-                Phone Number
-              </label>
-              <input
-                type="tel"
-                id="phone"
-                name="phone"
-                value={userData.phone}
-                onChange={handleInputChange}
-                className="w-full rounded-md border-gray-300 shadow-sm focus:border-black focus:ring-black"
-              />
-            </div>
+      {loading ? (
+        <div className="text-center py-4">Loading...</div>
+      ) : (
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700">First Name</label>
+            <input
+              type="text"
+              name="first_name"
+              value={formData.first_name}
+              onChange={handleChange}
+              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border"
+              placeholder={originalData.first_name || 'Enter first name'}
+            />
           </div>
           
-          <div className="flex items-center justify-between pt-6 border-t border-gray-200">
-            <button
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Last Name</label>
+            <input
+              type="text"
+              name="last_name"
+              value={formData.last_name}
+              onChange={handleChange}
+              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border"
+              placeholder={originalData.last_name || 'Enter last name'}
+            />
+          </div>
+          
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Username</label>
+            <input
+              type="text"
+              name="username"
+              value={formData.username}
+              onChange={handleChange}
+              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border"
+              placeholder={originalData.username || 'Enter username'}
+            />
+          </div>
+          
+          <div className="flex justify-end space-x-3 pt-4">
+            <button 
               type="button"
-              onClick={() => navigate('/account')}
+              onClick={() => navigate('/profile')}
               className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
             >
               Cancel
             </button>
-            
-            <button
+            <button 
               type="submit"
-              disabled={saving}
-              className="px-4 py-2 bg-black text-white rounded-md text-sm font-medium hover:bg-gray-800 disabled:bg-gray-400"
+              className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-black hover:bg-gray-800"
             >
-              {saving ? 'Saving...' : 'Save Changes'}
+              Save Changes
             </button>
           </div>
         </form>
-      </div>
-      
-      <div className="mt-8 p-6 bg-white rounded-lg border border-gray-200">
-        <h2 className="text-xl font-medium mb-6">Change Password</h2>
-        
-        <form>
-          <div className="space-y-4 mb-6">
-            <div>
-              <label htmlFor="current_password" className="block text-sm font-medium text-gray-700 mb-1">
-                Current Password
-              </label>
-              <input
-                type="password"
-                id="current_password"
-                name="current_password"
-                className="w-full rounded-md border-gray-300 shadow-sm focus:border-black focus:ring-black"
-              />
-            </div>
-            
-            <div>
-              <label htmlFor="new_password" className="block text-sm font-medium text-gray-700 mb-1">
-                New Password
-              </label>
-              <input
-                type="password"
-                id="new_password"
-                name="new_password"
-                className="w-full rounded-md border-gray-300 shadow-sm focus:border-black focus:ring-black"
-              />
-            </div>
-            
-            <div>
-              <label htmlFor="confirm_password" className="block text-sm font-medium text-gray-700 mb-1">
-                Confirm New Password
-              </label>
-              <input
-                type="password"
-                id="confirm_password"
-                name="confirm_password"
-                className="w-full rounded-md border-gray-300 shadow-sm focus:border-black focus:ring-black"
-              />
-            </div>
-          </div>
-          
-          <button
-            type="submit"
-            className="px-4 py-2 bg-black text-white rounded-md text-sm font-medium hover:bg-gray-800"
-          >
-            Update Password
-          </button>
-        </form>
-      </div>
+      )}
     </div>
   );
 }

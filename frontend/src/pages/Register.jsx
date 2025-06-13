@@ -40,8 +40,8 @@ function Register() {
     }
 
     try {
-      // Use the URL that matches your actual backend endpoint
-      const response = await fetch('http://localhost:8000/MyAuth/register/', {
+      // Change this URL to match your backend configuration
+      const response = await fetch('http://localhost:8000/api/auth/register/', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
