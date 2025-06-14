@@ -117,6 +117,37 @@ function Home() {
           </form>
         </div>
       </section>
+
+      {/* Debug Component - Temporary */}
+      <CategoryDebug />
+    </div>
+  );
+}
+
+// Add this component to your Home.jsx temporarily
+function CategoryDebug() {
+  const [allCategories, setAllCategories] = useState([]);
+  
+  useEffect(() => {
+    fetch('http://localhost:8000/api/categories/')
+      .then(res => res.json())
+      .then(data => {
+        console.log("Raw API response:", data);
+        // Check if data is paginated
+        if (data.results) {
+          setAllCategories(data.results);
+        } else if (Array.isArray(data)) {
+          setAllCategories(data);
+        }
+      });
+  }, []);
+  
+  return (
+    <div className="bg-gray-100 p-4 my-4">
+      <h3 className="font-bold">All Categories:</h3>
+      <pre className="text-xs mt-2 overflow-auto">
+        {JSON.stringify(allCategories, null, 2)}
+      </pre>
     </div>
   );
 }

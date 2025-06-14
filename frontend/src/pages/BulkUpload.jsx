@@ -33,7 +33,17 @@ function BulkUpload() {
         
         if (categoriesResponse.ok) {
           const data = await categoriesResponse.json();
-          setCategories(data);
+          
+          // Fix: Extract the categories array from the paginated response
+          let categoriesArray = [];
+          if (data.results && Array.isArray(data.results)) {
+            categoriesArray = data.results;
+          } else if (Array.isArray(data)) {
+            categoriesArray = data;
+          }
+          
+          // Set the categories state to the array, not the whole object
+          setCategories(categoriesArray);
           console.log("Categories loaded:", data);
         } else {
           console.error('Failed to fetch categories:', categoriesResponse.status);
@@ -67,10 +77,10 @@ function BulkUpload() {
   // Download sample CSV template
   const downloadSampleCSV = () => {
     const csvContent = 
-      "name,slug,price,discount_price,category,subcategory,description,stock,is_featured,image_urls,brand,color,size\n" +
-      "\"Men's Classic T-Shirt\",mens-classic-tshirt,29.99,24.99,Men,T-Shirts,\"Comfortable cotton t-shirt for everyday wear\",100,true,https://example.com/images/tshirt1.jpg|https://example.com/images/tshirt2.jpg,Nike,Black|White|Blue,S|M|L|XL\n" +
-      "\"Women's Summer Dress\",womens-summer-dress,49.99,39.99,Women,Dresses,\"Lightweight floral summer dress perfect for warm weather\",50,true,https://example.com/images/dress1.jpg,Zara,Red|Yellow,XS|S|M|L\n" +
-      "\"Kids Denim Jeans\",kids-denim-jeans,34.99,,Kids,Boys,\"Durable denim jeans for active children\",75,false,https://example.com/images/kids-jeans.jpg,GAP,Blue,4|6|8|10|12";
+      "name,slug,price,discount_price,category,description,stock,is_featured,image_urls,brand,color,size\n" +
+      "\"Men's Classic T-Shirt\",mens-classic-tshirt,29.99,24.99,Men,\"Comfortable cotton t-shirt for everyday wear\",100,true,https://example.com/images/tshirt1.jpg,Nike,Black|White|Blue,S|M|L|XL\n" +
+      "\"Women's Summer Dress\",womens-summer-dress,49.99,39.99,Women,\"Lightweight floral summer dress perfect for warm weather\",50,true,https://example.com/images/dress1.jpg,Zara,Red|Yellow,XS|S|M|L\n" +
+      "\"Kids Denim Jeans\",kids-denim-jeans,34.99,,Kids,\"Durable denim jeans for active children\",75,false,https://example.com/images/kids-jeans.jpg,GAP,Blue,4|6|8|10|12";
     
     const blob = new Blob([csvContent], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
@@ -157,7 +167,7 @@ function BulkUpload() {
     }
   };
   
-  // Extract shared parsing logic into a separate function
+  // Simplify the parseProductRow function
   const parseProductRow = (cols, categories) => {
     // Create product object from columns
     const product = {
@@ -166,16 +176,14 @@ function BulkUpload() {
       price: parseFloat(cols[2]?.replace(/[^0-9.]/g, '') || 0),
       sale_price: cols[3] ? parseFloat(cols[3].replace(/[^0-9.]/g, '')) : null,
       categoryName: cols[4]?.replace(/"/g, '').trim() || '',
-      subcategoryName: cols[5]?.replace(/"/g, '').trim() || '',
-      description: cols[6]?.replace(/"/g, '').trim() || '',
-      stock: parseInt(cols[7] || '0', 10),
-      featured: cols[8]?.toLowerCase() === 'true',
-      images: cols[9] ? cols[9].split('|').map(url => url.trim()) : [],
-      brand: cols[10]?.replace(/"/g, '').trim() || '',
-      colors: cols[11] ? cols[11].split('|').map(c => c.trim()) : [],
-      sizes: cols[12] ? cols[12].split('|').map(s => s.trim()) : [],
+      description: cols[5]?.replace(/"/g, '').trim() || '',
+      stock: parseInt(cols[6] || '0', 10),
+      featured: cols[7]?.toLowerCase() === 'true',
+      images: cols[8] ? cols[8].split('|').map(url => url.trim()) : [],
+      brand: cols[9]?.replace(/"/g, '').trim() || '',
+      colors: cols[10] ? cols[10].split('|').map(c => c.trim()) : [],
+      sizes: cols[11] ? cols[11].split('|').map(s => s.trim()) : [],
       category: '', // Will be set after lookup
-      subcategory: '', // Will be set after lookup
       in_stock: true
     };
     
@@ -184,24 +192,15 @@ function BulkUpload() {
       product.slug = product.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
     }
     
-    // Find category by name
-    const categoryObj = categories.find(c => 
-      c.name.toLowerCase() === product.categoryName.toLowerCase()
-    );
+    // Find category by name - simplified for Men, Women, Kids
+    const categoryMap = {
+      'men': categories.find(c => c.name.toLowerCase() === 'men')?.id,
+      'women': categories.find(c => c.name.toLowerCase() === 'women')?.id,
+      'kids': categories.find(c => c.name.toLowerCase() === 'kids')?.id
+    };
     
-    if (categoryObj) {
-      product.category = categoryObj.id;
-      
-      // Find subcategory if available
-      if (product.subcategoryName && categoryObj.subcategories) {
-        const subcategoryObj = categoryObj.subcategories.find(sc => 
-          sc.name.toLowerCase() === product.subcategoryName.toLowerCase()
-        );
-        if (subcategoryObj) {
-          product.subcategory = subcategoryObj.id;
-        }
-      }
-    }
+    // Assign category ID
+    product.category = categoryMap[product.categoryName.toLowerCase()] || '';
     
     return product;
   };
@@ -302,33 +301,34 @@ function BulkUpload() {
     setProducts(prevProducts => prevProducts.filter((_, i) => i !== index));
   };
   
-  // Validate all products before submission
-  const validateProducts = () => {
-    const errors = [];
+  // Update the validateProducts function
+const validateProducts = () => {
+  const errors = [];
+  
+  for (let i = 0; i < products.length; i++) {
+    const product = products[i];
     
-    for (let i = 0; i < products.length; i++) {
-      const product = products[i];
-      
-      if (!product.name || product.name.trim() === '') {
-        errors.push(`Product #${i+1}: Name is required`);
-      }
-      
-      if (isNaN(product.price) || product.price <= 0) {
-        errors.push(`Product #${i+1}: Valid price is required`);
-      }
-      
-      if (!product.category) {
-        errors.push(`Product #${i+1}: Category is required`);
-      }
+    if (!product.name || product.name.trim() === '') {
+      errors.push(`Product #${i+1}: Name is required`);
     }
     
-    if (errors.length > 0) {
-      setError(errors.join('\n'));
-      return false;
+    if (isNaN(product.price) || product.price <= 0) {
+      errors.push(`Product #${i+1}: Valid price is required`);
     }
     
-    return true;
-  };
+    // Ensure products have one of the three main categories
+    if (!product.category) {
+      errors.push(`Product #${i+1}: Category is required (Men, Women, or Kids)`);
+    }
+  }
+  
+  if (errors.length > 0) {
+    setError(errors.join('\n'));
+    return false;
+  }
+  
+  return true;
+};
   
   // Confirm submission
   const confirmSubmit = () => {
@@ -702,9 +702,6 @@ const deleteProduct = async (productId) => {
                     Category
                   </th>
                   <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Subcategory
-                  </th>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Sizes
                   </th>
                   <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -746,21 +743,6 @@ const deleteProduct = async (productId) => {
                         {categories.map(category => (
                           <option key={category.id} value={category.id}>
                             {category.name}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-                    <td className="px-4 py-2">
-                      <select
-                        value={product.subcategory || ""}
-                        onChange={(e) => handleProductChange(index, 'subcategory', e.target.value)}
-                        className="px-2 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-black"
-                        disabled={!product.category}
-                      >
-                        <option value="">Select Subcategory</option>
-                        {categories.find(c => c.id === parseInt(product.category))?.subcategories?.map(subcategory => (
-                          <option key={subcategory.id} value={subcategory.id}>
-                            {subcategory.name}
                           </option>
                         ))}
                       </select>

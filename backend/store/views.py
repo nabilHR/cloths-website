@@ -40,19 +40,27 @@ from .models import ProductImage
 class CategoryViewSet(viewsets.ModelViewSet):
     queryset = Category.objects.all()
     serializer_class = CategorySerializer
-    pagination_class = None  # Disable pagination for categories
+    permission_classes = [permissions.AllowAny]
     
-    # Add error logging
-    def list(self, request, *args, **kwargs):
-        try:
-            return super().list(request, *args, **kwargs)
-        except Exception as e:
-            print(f"Error in CategoryViewSet: {str(e)}")
-            raise
+    def get_queryset(self):
+        queryset = Category.objects.all()
+        
+        # Add slug filtering
+        slug = self.request.query_params.get('slug')
+        if slug:
+            queryset = queryset.filter(slug=slug)
+            print(f"Filtering categories by slug: {slug}")
+    
+        # Debug information
+        print(f"Returning {queryset.count()} categories")
+        for cat in queryset:
+            print(f"  - {cat.name} (ID: {cat.id}, slug: {cat.slug})")
+            
+        return queryset
 
 class ProductViewSet(viewsets.ModelViewSet):
     """
-    API endpoint for products - public GET access, authenticated for other operations
+    API endpoint for products
     """
     serializer_class = ProductSerializer
     
@@ -64,27 +72,21 @@ class ProductViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         queryset = Product.objects.all().order_by('-created_at')
         
-        # Debug logging for category filtering
+        # Get category parameter and apply strict filtering
         category = self.request.query_params.get('category')
         if category:
-            print(f"Filtering products by category ID: {category}")
             try:
-                # Explicit conversion to integer for exact matching
+                # Ensure exact integer matching for category ID
                 category_id = int(category)
+                print(f"Filtering products by category ID: {category_id}")
                 queryset = queryset.filter(category_id=category_id)
-                
-                # Debug log
                 print(f"Found {queryset.count()} products in category {category_id}")
-                
-                # Log each product for verification
-                for product in queryset[:5]:  # First 5 for brevity
-                    print(f"Product ID: {product.id}, Name: {product.name}, Category: {product.category_id}")
-                    
-            except ValueError:
+            except (ValueError, TypeError):
+                # Return empty queryset if category is not a valid integer
                 print(f"Invalid category ID: {category}")
-                queryset = Product.objects.none()
-    
-        # Other filters (subcategory, featured, etc.)
+                return Product.objects.none()
+        
+        # Filter by other parameters
         subcategory = self.request.query_params.get('subcategory')
         if subcategory:
             queryset = queryset.filter(subcategory_id=subcategory)
@@ -572,41 +574,38 @@ def is_staff(user):
 @login_required
 @user_passes_test(is_staff)
 def product_create(request):
+    from .forms import ProductForm, ProductImageFormSet
+
     if request.method == 'POST':
         form = ProductForm(request.POST, request.FILES)
         image_formset = ProductImageFormSet(request.POST, request.FILES, prefix='images')
-        
         if form.is_valid() and image_formset.is_valid():
-            # Save the product
             product = form.save(commit=False)
             # Process sizes if entered as comma-separated string
             if isinstance(form.cleaned_data['sizes'], str):
                 product.sizes = [size.strip() for size in form.cleaned_data['sizes'].split(',') if size.strip()]
             product.save()
-            
             # Save the additional images
             instances = image_formset.save(commit=False)
             for instance in instances:
                 instance.product = product
                 instance.save()
-            
             messages.success(request, f'Product "{product.name}" created successfully.')
             return redirect('admin:store_product_changelist')
     else:
         form = ProductForm()
         image_formset = ProductImageFormSet(prefix='images')
-    
+
     return render(request, 'admin/store/product/create.html', {
         'form': form,
         'image_formset': image_formset,
         'title': 'Add New Product',
     })
-
+    
 @login_required
 @user_passes_test(is_staff)
 def fancy_product_upload(request):
     """A fancy product upload view with a beautiful interface"""
-    
     if request.method == 'POST':
         # Handle form submission here
         # This will be implemented fully with the fancy upload HTML
@@ -615,55 +614,38 @@ def fancy_product_upload(request):
     
     # Get all categories for the form
     categories = Category.objects.all()
-    
     return render(request, 'admin/store/product/fancy_upload.html', {
         'categories': categories,
         'title': 'Add New Product'
     })
-
 def product_list(request):
     """View function for listing all products"""
     products = Product.objects.filter(in_stock=True)
     return render(request, 'store/product_list.html', {'products': products})
-
 def product_detail(request, slug):
     """View function for displaying a single product"""
     product = get_object_or_404(Product, slug=slug, in_stock=True)
     return render(request, 'store/product_detail.html', {'product': product})
+    return render(request, 'store/product_list.html', {'products': products})
 
-
-class OrderViewSet(viewsets.ModelViewSet):
-    serializer_class = OrderSerializer
-    permission_classes = [IsAuthenticated]
-    
-    def get_queryset(self):
-        # Return only the current user's orders
-        return Order.objects.filter(user=self.request.user)
+# (Remove the corrupted duplicate OrderViewSet and define UserViewSet properly)
 
 class UserViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     queryset = User.objects.all()
-    
+    serializer_class = RegisterSerializer  # Or a custom User serializer if you have one
+
     @action(detail=False, methods=['get', 'put'])
     def me(self, request):
         """Get or update current user profile"""
         user = request.user
-        
-        # Handle PUT requests (updates)
         if request.method == 'PUT':
             data = request.data
-            
-            # Only update fields that are provided and not empty
             if 'first_name' in data and data['first_name']:
                 user.first_name = data['first_name']
-            
             if 'last_name' in data and data['last_name']:
                 user.last_name = data['last_name']
-            
-            # Save the user object
             user.save()
-            
-        # Return the user data (for both GET and after PUT)
         return Response({
             'id': user.id,
             'email': user.email,
@@ -675,24 +657,20 @@ class UserViewSet(viewsets.ModelViewSet):
             'phone_number': getattr(user.profile, 'phone_number', None) if hasattr(user, 'profile') else None,
             'date_joined': user.date_joined.isoformat() if user.date_joined else None,
         })
-
 # Fix the SubCategoryViewSet
 class SubCategoryViewSet(viewsets.ModelViewSet):
     """API endpoint for subcategories"""
     serializer_class = SubCategorySerializer
     permission_classes = [permissions.AllowAny]  # Public access
-    
+
     def get_queryset(self):
         queryset = SubCategory.objects.all()
-        
         # Filter by slug if provided
         slug = self.request.query_params.get('slug')
         if slug:
             queryset = queryset.filter(slug=slug)
-            
         # Filter by category if provided
         category = self.request.query_params.get('category')
         if category:
             queryset = queryset.filter(category_id=category)
-            
         return queryset

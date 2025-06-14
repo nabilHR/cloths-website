@@ -24,32 +24,31 @@ function Navbar() {
   
   // Fetch categories from backend
   useEffect(() => {
-    const fetchCategories = async () => {
-      try {
-        const response = await fetch('http://localhost:8000/api/categories/');
-        if (!response.ok) {
-          throw new Error(`Error ${response.status}: ${response.statusText}`);
-        }
-        
-        const data = await response.json();
-        console.log('Navbar categories data:', data);
+    // Fetch only the main categories
+    fetch('http://localhost:8000/api/categories/')
+      .then(res => res.json())
+      .then(data => {
+        console.log("Raw categories data:", data);
         
         // Handle different response formats
-        if (Array.isArray(data)) {
-          setCategories(data);
-        } else if (data.results && Array.isArray(data.results)) {
-          setCategories(data.results);
-        } else {
-          console.error('Unexpected categories data format in Navbar:', data);
-          setCategories([]);
+        let categoryList = [];
+        if (data.results && Array.isArray(data.results)) {
+          categoryList = data.results;
+        } else if (Array.isArray(data)) {
+          categoryList = data;
         }
-      } catch (error) {
-        console.error('Error fetching categories:', error);
-        setCategories([]);
-      }
-    };
-    
-    fetchCategories();
+        
+        // IMPORTANT: Filter to only show Men, Women, Kids
+        const mainCategories = categoryList.filter(cat => 
+          ["men", "women", "kids"].includes(cat.slug.toLowerCase())
+        );
+        
+        console.log("Filtered main categories:", mainCategories);
+        setCategories(mainCategories);
+      })
+      .catch(err => {
+        console.error("Error fetching categories:", err);
+      });
   }, []);
   
   // Get user initial for profile button
@@ -71,11 +70,8 @@ function Navbar() {
   };
   
   const handleCategoryClick = (categoryId) => {
-    if (selectedCategory === categoryId) {
-      setSelectedCategory(null);
-    } else {
-      setSelectedCategory(categoryId);
-    }
+    // Just close the menu when category is clicked
+    setIsMenuOpen(false);
   };
   
   const handleSubcategoryClick = (slug) => {
@@ -296,57 +292,14 @@ function Navbar() {
                 {categories && categories.length > 0 ? (
                   categories.map((category) => (
                     <div key={category.id} className="category-item">
-                      {/* Main Category Button */}
-                      <button
-                        onClick={() => handleCategoryClick(category.id)}
-                        className="category-button w-full text-left py-3 px-4 rounded-lg hover:bg-gray-100 transition-colors flex items-center justify-between"
+                      {/* Direct link to category without dropdown */}
+                      <Link
+                        to={`/category/${category.slug}`}
+                        className="category-button w-full text-left py-3 px-4 rounded-lg hover:bg-gray-100 transition-colors flex items-center"
+                        onClick={() => setIsMenuOpen(false)}
                       >
                         <span className="text-lg font-medium">{category.name}</span>
-                        <svg
-                          className={`h-5 w-5 transform transition-transform duration-200 ${
-                            selectedCategory === category.id ? 'rotate-180' : ''
-                          }`}
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth="2"
-                            d="M19 9l-7 7-7-7"
-                          ></path>
-                        </svg>
-                      </button>
-
-                      {/* Subcategories */}
-                      {selectedCategory === category.id && category.subcategories && (
-                        <div className="subcategory-container ml-4 mt-2 space-y-1 animate-fadeIn">
-                          {category.subcategories.map((subcategory) => (
-                            <Link
-                              key={subcategory.id}
-                              to={`/category/${subcategory.slug}`}
-                              onClick={() => {
-                                setIsMenuOpen(false);
-                                setSelectedCategory(null);
-                              }}
-                              className="subcategory-link block py-2 px-4 rounded-md hover:bg-gray-50 transition-colors flex items-center text-gray-700"
-                            >
-                              <span className="subcategory-icon mr-3 text-gray-400">
-                                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth="2"
-                                    d="M9 5l7 7-7 7"
-                                  ></path>
-                                </svg>
-                              </span>
-                              {subcategory.name}
-                            </Link>
-                          ))}
-                        </div>
-                      )}
+                      </Link>
                     </div>
                   ))
                 ) : (

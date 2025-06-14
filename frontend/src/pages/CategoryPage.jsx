@@ -3,8 +3,41 @@ import { useParams, useLocation } from 'react-router-dom';
 import ProductCard from '../components/ProductCard';
 import FilterBar from '../components/FilterBar';
 
+// Define CategoryDebugger as a separate component OUTSIDE the main component
+function CategoryDebugger() {
+  const [categories, setCategories] = useState([]);
+  
+  useEffect(() => {
+    fetch('http://localhost:8000/api/categories/')
+      .then(res => res.json())
+      .then(data => {
+        if (data.results) {
+          setCategories(data.results);
+        } else if (Array.isArray(data)) {
+          setCategories(data);
+        }
+      });
+  }, []);
+  
+  return (
+    <div className="bg-gray-100 p-4 rounded-md mb-4">
+      <h3 className="font-bold">Available Categories:</h3>
+      <ul>
+        {categories.map(cat => (
+          <li key={cat.id}>
+            <strong>ID:</strong> {cat.id}, 
+            <strong>Name:</strong> {cat.name}, 
+            <strong>Slug:</strong> {cat.slug}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function CategoryPage() {
   const { slug } = useParams();
+  console.log("CategoryPage mounted with slug:", slug);
   const location = useLocation();
   const queryParams = new URLSearchParams(location.search);
   
@@ -22,61 +55,45 @@ function CategoryPage() {
   useEffect(() => {
     const fetchCategoryProducts = async () => {
       setLoading(true);
+      setError(null);
+      
       try {
-        let categoryId, subcategoryId;
+        // Log the current slug for debugging
+        console.log("Fetching category with slug:", slug);
         
-        // First determine if we're looking at a main category or a subcategory
+        // First, fetch the category info based on slug
         const categoryResponse = await fetch(`http://localhost:8000/api/categories/?slug=${slug}`);
-        
-        if (!categoryResponse.ok) {
-          throw new Error(`Error fetching category: ${categoryResponse.status}`);
-        }
-        
         const categoryData = await categoryResponse.json();
         
-        // Only try to fetch subcategory if category not found
-        if (categoryData.length === 0) {
-          const subcategoryResponse = await fetch(`http://localhost:8000/api/subcategories/?slug=${slug}`);
-          
-          if (!subcategoryResponse.ok) {
-            throw new Error(`Error fetching subcategory: ${subcategoryResponse.status}`);
-          }
-          
-          const subcategoryData = await subcategoryResponse.json();
-          
-          if (subcategoryData.length > 0) {
-            setCategory({
-              ...subcategoryData[0],
-              name: subcategoryData[0].name,
-              parent_category: subcategoryData[0].category
-            });
-            subcategoryId = subcategoryData[0].id;
-            categoryId = subcategoryData[0].category;
-          } else {
-            throw new Error('Category not found');
-          }
+        console.log("Category data from API:", categoryData);
+        
+        // Check if we have results and it's an array or paginated results
+        let foundCategory;
+        if (categoryData.results && categoryData.results.length > 0) {
+          foundCategory = categoryData.results[0];
+        } else if (Array.isArray(categoryData) && categoryData.length > 0) {
+          foundCategory = categoryData[0];
         } else {
-          setCategory(categoryData[0]);
-          categoryId = categoryData[0].id;
+          // No category found with this slug
+          throw new Error(`Category with slug "${slug}" not found`);
         }
+        
+        // Set the category state
+        setCategory(foundCategory);
         
         // Build API params
         const apiParams = new URLSearchParams();
         
-        // Ensure categoryId is a number and correctly set
-        if (categoryId) {
-          apiParams.set('category', categoryId.toString());
-          
-          // For debugging, log the exact URL you're calling
-          console.log(`Fetching products with category ID: ${categoryId}`);
+        // Ensure we have a valid category ID before setting it
+        if (foundCategory && foundCategory.id) {
+          apiParams.set('category', foundCategory.id.toString());
+          console.log(`Fetching products with category ID: ${foundCategory.id}`);
+        } else {
+          console.error("No valid category ID found");
+          throw new Error("Category ID not found");
         }
         
-        // If we're viewing a subcategory, add subcategory filter
-        if (subcategoryId) {
-          apiParams.set('subcategory', subcategoryId.toString());
-        }
-        
-        // Add all other query parameters
+        // Add any other filter parameters
         for (const [key, value] of queryParams.entries()) {
           if (!['category', 'subcategory'].includes(key)) {
             apiParams.set(key, value);
@@ -96,7 +113,7 @@ function CategoryPage() {
         }
         
         const productsData = await productsResponse.json();
-        console.log(`Category ID: ${categoryId}, Products returned:`, productsData);
+        console.log(`Category ID: ${foundCategory.id}, Products returned:`, productsData);
         
         // Log each product's category to verify
         if (Array.isArray(productsData)) {
@@ -115,6 +132,13 @@ function CategoryPage() {
     
     fetchCategoryProducts();
   }, [slug, location.search]); // React to URL changes
+
+  // Debugging: Log raw and parsed URL parameters
+  useEffect(() => {
+    console.log("Raw slug:", slug);
+    console.log("Raw query params:", location.search);
+    console.log("Parsed query params:", Object.fromEntries(queryParams.entries()));
+  }, [slug, location.search]);
 
   const handleFilterChange = (filters) => {
     console.log('Filters changed:', filters);
@@ -156,8 +180,15 @@ function CategoryPage() {
   if (error) {
     return (
       <div className="max-w-6xl mx-auto px-4 py-8">
-        <div className="text-red-500 p-4">
-          {error}
+        <div className="bg-red-50 border border-red-200 text-red-800 p-4 rounded-md my-4">
+          <h3 className="font-bold">Error Loading Products</h3>
+          <p>{error}</p>
+          <button 
+            onClick={() => window.location.href = '/'}
+            className="mt-2 px-4 py-2 bg-black text-white rounded hover:bg-gray-800"
+          >
+            Return to Home
+          </button>
         </div>
       </div>
     );
@@ -307,6 +338,36 @@ function CategoryPage() {
           )}
         </div>
       </div>
+
+      {/* Debug info - show only in development */}
+      {import.meta.env.DEV && (
+        <div className="bg-gray-100 p-4 mb-4 rounded">
+          <h3 className="font-bold">Category Debug Info:</h3>
+          <p>Category ID: {category?.id}</p>
+          <p>Category Name: {category?.name || 'Unknown'}</p>
+          <p>Total Products: {products.length}</p>
+          <p>Products with different category: {
+            products.filter(p => p.category != category?.id).length
+          }</p>
+          <button 
+            onClick={() => {
+              const categoryId = category?.id;
+              console.log("Products with wrong category:", 
+                products.filter(p => p.category != categoryId).map(p => ({
+                  id: p.id, 
+                  name: p.name, 
+                  correctCategory: categoryId,
+                  actualCategory: p.category,
+                  categoryName: p.category_name
+                }))
+              );
+            }}
+            className="bg-blue-500 text-white px-3 py-1 rounded mt-2"
+          >
+            Log Mismatched Products
+          </button>
+        </div>
+      )}
     </div>
   );
 }

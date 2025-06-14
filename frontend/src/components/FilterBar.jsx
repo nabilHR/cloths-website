@@ -39,10 +39,20 @@ function FilterBar() {
         const response = await fetch('http://localhost:8000/api/categories/');
         if (response.ok) {
           const data = await response.json();
-          setCategories(data);
+          
+          // Handle different response formats
+          if (data.results && Array.isArray(data.results)) {
+            setCategories(data.results);
+          } else if (Array.isArray(data)) {
+            setCategories(data);
+          } else {
+            console.error('Unexpected categories data format:', data);
+            setCategories([]);
+          }
         }
       } catch (err) {
         console.error('Error fetching categories:', err);
+        setCategories([]);
       }
     };
     
@@ -264,24 +274,28 @@ function FilterBar() {
           <div className="mb-4">
             <h3 className="font-light text-xs uppercase tracking-wider mb-4">Categories</h3>
             <div className="max-h-60 overflow-y-auto space-y-3 pr-2 custom-scrollbar">
-              {categories.map(category => (
-                <div key={category.id} className="flex items-center">
-                  <input
-                    type="radio"
-                    id={`category-${category.id}`}
-                    name="category"
-                    checked={selectedCategory === category.id.toString()}
-                    onChange={() => setSelectedCategory(category.id.toString())}
-                    className="form-radio h-4 w-4 text-black border-gray-300 focus:ring-0 cursor-pointer"
-                  />
-                  <label 
-                    htmlFor={`category-${category.id}`} 
-                    className="ml-2 text-sm text-gray-700 cursor-pointer hover:text-black transition-colors duration-200"
-                  >
-                    {category.name}
-                  </label>
-                </div>
-              ))}
+              {categories && Array.isArray(categories) ? (
+                categories.map(category => (
+                  <div key={category.id} className="flex items-center">
+                    <input
+                      type="radio"
+                      id={`category-${category.id}`}
+                      name="category"
+                      checked={selectedCategory === category.id.toString()}
+                      onChange={() => setSelectedCategory(category.id.toString())}
+                      className="form-radio h-4 w-4 text-black border-gray-300 focus:ring-0 cursor-pointer"
+                    />
+                    <label 
+                      htmlFor={`category-${category.id}`} 
+                      className="ml-2 text-sm text-gray-700 cursor-pointer hover:text-black transition-colors duration-200"
+                    >
+                      {category.name}
+                    </label>
+                  </div>
+                ))
+              ) : (
+                <p className="text-gray-500">No categories available</p>
+              )}
             </div>
           </div>
           
