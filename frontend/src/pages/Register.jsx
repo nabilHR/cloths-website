@@ -47,7 +47,7 @@ function Register() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          username: formData.email,
+          username: formData.email, // This is already correctly using email as username
           email: formData.email,
           password: formData.password,
           password2: formData.confirmPassword,
@@ -137,6 +137,9 @@ function Register() {
             className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-black"
             required
           />
+          <p className="text-xs text-gray-500 mt-1">
+            You'll use your email address to log in
+          </p>
         </div>
         
         <div>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import ProductCard from './ProductCard';
 
 function FeaturedProducts() {
   const [products, setProducts] = useState([]);
@@ -9,25 +9,18 @@ function FeaturedProducts() {
   useEffect(() => {
     const fetchFeaturedProducts = async () => {
       try {
+        setLoading(true);
         const response = await fetch('http://localhost:8000/api/products/?featured=true&limit=6');
+        
         if (!response.ok) {
           throw new Error(`Error ${response.status}: ${response.statusText}`);
         }
         
         const data = await response.json();
-        
-        // Handle different response formats (with or without pagination)
-        if (data.results && Array.isArray(data.results)) {
-          setProducts(data.results);
-        } else if (Array.isArray(data)) {
-          setProducts(data);
-        } else {
-          console.error('Unexpected product data format:', data);
-          setProducts([]);
-        }
-      } catch (err) {
-        console.error('Error fetching featured products:', err);
-        setError(err.message);
+        setProducts(data.results || data);
+      } catch (error) {
+        console.error('Error fetching featured products:', error);
+        setError(error.message);
       } finally {
         setLoading(false);
       }
@@ -37,59 +30,25 @@ function FeaturedProducts() {
   }, []);
 
   if (loading) {
-    return (
-      <section className="py-12 px-4 bg-white">
-        <div className="max-w-6xl mx-auto">
-          <h2 className="text-2xl font-light mb-8 text-center">Featured Products</h2>
-          <div className="text-center py-8">Loading featured products...</div>
-        </div>
-      </section>
-    );
+    return <div className="text-center py-10">Loading featured products...</div>;
   }
 
   if (error) {
-    return (
-      <section className="py-12 px-4 bg-white">
-        <div className="max-w-6xl mx-auto">
-          <h2 className="text-2xl font-light mb-8 text-center">Featured Products</h2>
-          <div className="text-center py-8 text-red-500">Error: {error}</div>
-        </div>
-      </section>
-    );
+    return <div className="text-center text-red-500 py-10">Failed to load featured products</div>;
+  }
+
+  if (!products || products.length === 0) {
+    return <div className="text-center py-10">No featured products found</div>;
   }
 
   return (
-    <section className="py-12 px-4 bg-white">
-      <div className="max-w-6xl mx-auto">
-        <h2 className="text-2xl font-light mb-8 text-center">Featured Products</h2>
-        
-        {products.length === 0 ? (
-          <div className="text-center py-8 text-gray-500">No featured products available</div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {products.map(product => (
-              <Link key={product.id} to={`/product/${product.slug}`} className="group">
-                <div className="mb-4 overflow-hidden">
-                  <img 
-                    src={product.image || 'https://via.placeholder.com/300x400'} 
-                    alt={product.name}
-                    className="w-full h-80 object-cover transition-transform duration-500 group-hover:scale-105"
-                  />
-                </div>
-                <h3 className="text-sm font-medium">{product.name}</h3>
-                <p className="mt-1 text-sm font-medium">${product.price}</p>
-              </Link>
-            ))}
-          </div>
-        )}
-        
-        <div className="text-center mt-10">
-          <Link 
-            to="/products" 
-            className="inline-block border border-black px-6 py-2 text-sm uppercase tracking-wider hover:bg-black hover:text-white transition-colors duration-300"
-          >
-            View All Products
-          </Link>
+    <section className="py-12 bg-white">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <h2 className="text-3xl font-extrabold tracking-tight text-gray-900 mb-6">Featured Products</h2>
+        <div className="grid grid-cols-1 gap-y-10 sm:grid-cols-2 gap-x-6 lg:grid-cols-3 xl:grid-cols-4 xl:gap-x-8">
+          {products.map(product => (
+            <ProductCard key={product.id} product={product} />
+          ))}
         </div>
       </div>
     </section>

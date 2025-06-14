@@ -5,11 +5,10 @@ import { showToast } from '../utils/toast';
 function ProfileEdit() {
   const [formData, setFormData] = useState({
     first_name: '',
-    last_name: '',
-    username: ''
+    last_name: ''
   });
   
-  const [originalData, setOriginalData] = useState({}); // Store original values
+  const [originalData, setOriginalData] = useState({});
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
@@ -33,14 +32,15 @@ function ProfileEdit() {
         }
         
         const userData = await response.json();
-        // Set original data for comparison later
+        console.log("Fetched user data:", userData);
+        
+        // Store original data
         setOriginalData(userData);
         
-        // Set the form data with user data
+        // Set form data with user data
         setFormData({
           first_name: userData.first_name || '',
-          last_name: userData.last_name || '',
-          username: userData.username || ''
+          last_name: userData.last_name || ''
         });
       } catch (error) {
         console.error('Error fetching user data:', error);
@@ -81,17 +81,6 @@ function ProfileEdit() {
         changedData.last_name = formData.last_name;
       }
       
-      if (formData.username !== originalData.username && formData.username !== '') {
-        changedData.username = formData.username;
-      }
-      
-      // If no fields were changed, don't make the request
-      if (Object.keys(changedData).length === 0) {
-        showToast.info('No changes were made');
-        navigate('/profile');
-        return;
-      }
-      
       console.log("Sending profile update data:", changedData);
       
       const response = await fetch('http://localhost:8000/api/users/me/', {
@@ -100,7 +89,7 @@ function ProfileEdit() {
           'Authorization': `Token ${token}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify(changedData)  // Only send changed fields
+        body: JSON.stringify(changedData)
       });
       
       if (!response.ok) {
@@ -155,15 +144,15 @@ function ProfileEdit() {
           </div>
           
           <div>
-            <label className="block text-sm font-medium text-gray-700">Username</label>
+            <label className="block text-sm font-medium text-gray-700">Email</label>
             <input
-              type="text"
-              name="username"
-              value={formData.username}
-              onChange={handleChange}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border"
-              placeholder={originalData.username || 'Enter username'}
+              type="email"
+              name="email"
+              value={originalData.email || ''}
+              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border bg-gray-100"
+              readOnly
             />
+            <p className="text-xs text-gray-500 mt-1">Email cannot be changed</p>
           </div>
           
           <div className="flex justify-end space-x-3 pt-4">

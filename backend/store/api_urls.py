@@ -5,7 +5,7 @@ from .views import (
     CategoryViewSet, ProductViewSet, OrderViewSet,
     ReviewViewSet, BulkProductUploadView, ShippingAddressViewSet,
     WishlistViewSet, UserProfileViewSet, AddressViewSet,
-    UserReviewViewSet, UserViewSet  # Make sure to import UserViewSet
+    UserReviewViewSet, UserViewSet, SubCategoryViewSet  # Make sure to import UserViewSet
 )
 
 # Create router for API endpoints
@@ -19,6 +19,7 @@ router.register(r'wishlist', WishlistViewSet, basename='wishlist')
 router.register(r'users/profile', UserProfileViewSet, basename='user-profile')
 router.register(r'addresses', AddressViewSet, basename='address')
 router.register(r'reviews/my-reviews', UserReviewViewSet, basename='user-review')
+router.register(r'subcategories', SubCategoryViewSet, basename='subcategory')  # Newly added
 
 # Add non-viewset API endpoints
 urlpatterns = [

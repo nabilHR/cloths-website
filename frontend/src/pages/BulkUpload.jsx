@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { toast } from 'react-hot-toast'; // Make sure you have this import
 
 function BulkUpload() {
   const [pastedData, setPastedData] = useState('');
   const [products, setProducts] = useState([]);
+  const [existingProducts, setExistingProducts] = useState([]); // New state for existing products
   const [images, setImages] = useState([]);
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -12,9 +14,9 @@ function BulkUpload() {
   const [showConfirmation, setShowConfirmation] = useState(false);
   const navigate = useNavigate();
   
-  // Fetch categories when component mounts
+  // Fetch categories and existing products when component mounts
   useEffect(() => {
-    const fetchCategories = async () => {
+    const fetchData = async () => {
       try {
         const token = localStorage.getItem('authToken');
         if (!token) {
@@ -22,35 +24,53 @@ function BulkUpload() {
           return;
         }
         
-        const response = await fetch('http://localhost:8000/api/categories/', {
+        // Fetch categories
+        const categoriesResponse = await fetch('http://localhost:8000/api/categories/', {
           headers: {
             'Authorization': `Token ${token}`
           }
         });
         
-        if (response.ok) {
-          const data = await response.json();
+        if (categoriesResponse.ok) {
+          const data = await categoriesResponse.json();
           setCategories(data);
           console.log("Categories loaded:", data);
         } else {
-          console.error('Failed to fetch categories:', response.status);
+          console.error('Failed to fetch categories:', categoriesResponse.status);
           setError('Failed to load categories. Please refresh the page.');
         }
+        
+        // Fetch existing products
+        const productsResponse = await fetch('http://localhost:8000/api/products/', {
+          headers: {
+            'Authorization': `Token ${token}`
+          }
+        });
+        
+        if (productsResponse.ok) {
+          const data = await productsResponse.json();
+          // If response is paginated, use the results field
+          setExistingProducts(data.results || data);
+          console.log("Existing products loaded:", data.results || data);
+        } else {
+          console.error('Failed to fetch products:', productsResponse.status);
+        }
       } catch (error) {
-        console.error('Error fetching categories:', error);
-        setError('Network error while loading categories.');
+        console.error('Error fetching data:', error);
+        setError('Network error while loading data.');
       }
     };
     
-    fetchCategories();
+    fetchData();
   }, []);
   
   // Download sample CSV template
   const downloadSampleCSV = () => {
     const csvContent = 
-      "Name,Price,Description,Sizes\n" +
-      "T-Shirt Example,29.99,\"Comfortable cotton t-shirt, perfect for daily wear\",\"S,M,L,XL\"\n" +
-      "Jeans Example,49.99,\"Classic blue denim jeans\",\"30,32,34,36\"";
+      "name,slug,price,discount_price,category,subcategory,description,stock,is_featured,image_urls,brand,color,size\n" +
+      "\"Men's Classic T-Shirt\",mens-classic-tshirt,29.99,24.99,Men,T-Shirts,\"Comfortable cotton t-shirt for everyday wear\",100,true,https://example.com/images/tshirt1.jpg|https://example.com/images/tshirt2.jpg,Nike,Black|White|Blue,S|M|L|XL\n" +
+      "\"Women's Summer Dress\",womens-summer-dress,49.99,39.99,Women,Dresses,\"Lightweight floral summer dress perfect for warm weather\",50,true,https://example.com/images/dress1.jpg,Zara,Red|Yellow,XS|S|M|L\n" +
+      "\"Kids Denim Jeans\",kids-denim-jeans,34.99,,Kids,Boys,\"Durable denim jeans for active children\",75,false,https://example.com/images/kids-jeans.jpg,GAP,Blue,4|6|8|10|12";
     
     const blob = new Blob([csvContent], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
@@ -117,18 +137,7 @@ function BulkUpload() {
         
         if (cols.length < 2) continue; // Skip if not enough columns
         
-        // Assume fixed order: name, price, description, sizes
-        const product = {
-          name: cols[0].replace(/"/g, '').trim(),
-          price: parseFloat(cols[1].replace(/[^0-9.]/g, '')),
-          description: cols.length > 2 ? cols[2].replace(/"/g, '').trim() : '',
-          sizes: cols.length > 3 
-            ? cols[3].replace(/"/g, '').split(',').map(s => s.trim())
-            : ['S', 'M', 'L'],
-          category: categories.length > 0 ? categories[0].id : "",
-          slug: cols[0].replace(/"/g, '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-'),
-          in_stock: true
-        };
+        const product = parseProductRow(cols, categories);
         
         // Validate product
         if (!product.name || isNaN(product.price) || product.price <= 0) {
@@ -153,19 +162,27 @@ function BulkUpload() {
     // Create product object from columns
     const product = {
       name: cols[0]?.replace(/"/g, '').trim() || '',
-      price: parseFloat(cols[1]?.replace(/[^0-9.]/g, '') || 0),
-      description: cols[2]?.replace(/"/g, '').trim() || '',
-      categoryName: cols[3]?.replace(/"/g, '').trim() || '',
-      subCategoryName: cols[4]?.replace(/"/g, '').trim() || '',
-      sizes: cols[5] ? cols[5].replace(/"/g, '').split(',').map(s => s.trim()) : [],
-      colors: cols[6] ? cols[6].replace(/"/g, '').split(',').map(c => c.trim()) : [],
+      slug: cols[1]?.replace(/"/g, '').trim() || '',
+      price: parseFloat(cols[2]?.replace(/[^0-9.]/g, '') || 0),
+      sale_price: cols[3] ? parseFloat(cols[3].replace(/[^0-9.]/g, '')) : null,
+      categoryName: cols[4]?.replace(/"/g, '').trim() || '',
+      subcategoryName: cols[5]?.replace(/"/g, '').trim() || '',
+      description: cols[6]?.replace(/"/g, '').trim() || '',
       stock: parseInt(cols[7] || '0', 10),
-      sku: cols[8]?.replace(/"/g, '').trim() || '',
+      featured: cols[8]?.toLowerCase() === 'true',
+      images: cols[9] ? cols[9].split('|').map(url => url.trim()) : [],
+      brand: cols[10]?.replace(/"/g, '').trim() || '',
+      colors: cols[11] ? cols[11].split('|').map(c => c.trim()) : [],
+      sizes: cols[12] ? cols[12].split('|').map(s => s.trim()) : [],
       category: '', // Will be set after lookup
       subcategory: '', // Will be set after lookup
-      slug: cols[0]?.replace(/"/g, '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-') || '',
       in_stock: true
     };
+    
+    // If no slug, generate from name
+    if (!product.slug && product.name) {
+      product.slug = product.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    }
     
     // Find category by name
     const categoryObj = categories.find(c => 
@@ -176,12 +193,12 @@ function BulkUpload() {
       product.category = categoryObj.id;
       
       // Find subcategory if available
-      if (categoryObj.subcategories) {
-        const subCategoryObj = categoryObj.subcategories.find(sc => 
-          sc.name.toLowerCase() === product.subCategoryName.toLowerCase()
+      if (product.subcategoryName && categoryObj.subcategories) {
+        const subcategoryObj = categoryObj.subcategories.find(sc => 
+          sc.name.toLowerCase() === product.subcategoryName.toLowerCase()
         );
-        if (subCategoryObj) {
-          product.subcategory = subCategoryObj.id;
+        if (subcategoryObj) {
+          product.subcategory = subcategoryObj.id;
         }
       }
     }
@@ -217,38 +234,30 @@ function BulkUpload() {
       const parsedProducts = [];
       
       for (let i = startRow; i < rows.length; i++) {
-        // Handle quoted values with commas inside
-        let cols = [];
-        let currentRow = rows[i];
-        let inQuotes = false;
-        let currentCol = '';
-        
-        for (let j = 0; j < currentRow.length; j++) {
-          if (currentRow[j] === '"' && (j === 0 || currentRow[j-1] !== '\\')) {
-            inQuotes = !inQuotes;
-          } else if (currentRow[j] === ',' && !inQuotes) {
-            cols.push(currentCol);
-            currentCol = '';
-          } else {
-            currentCol += currentRow[j];
+        // Try to split by tabs first, then by commas
+        let cols = rows[i].split('\t');
+        if (cols.length < 2) {
+          cols = [];
+          let currentRow = rows[i];
+          let inQuotes = false;
+          let currentCol = '';
+          
+          for (let j = 0; j < currentRow.length; j++) {
+            if (currentRow[j] === '"' && (j === 0 || currentRow[j-1] !== '\\')) {
+              inQuotes = !inQuotes;
+            } else if (currentRow[j] === ',' && !inQuotes) {
+              cols.push(currentCol);
+              currentCol = '';
+            } else {
+              currentCol += currentRow[j];
+            }
           }
+          cols.push(currentCol); // Add the last column
         }
-        cols.push(currentCol); // Add the last column
         
         if (cols.length < 2) continue; // Skip if not enough columns
         
-        // Assume fixed order: name, price, description, sizes
-        const product = {
-          name: cols[0].replace(/"/g, '').trim(),
-          price: parseFloat(cols[1].replace(/[^0-9.]/g, '')),
-          description: cols.length > 2 ? cols[2].replace(/"/g, '').trim() : '',
-          sizes: cols.length > 3 
-            ? cols[3].replace(/"/g, '').split(',').map(s => s.trim())
-            : ['S', 'M', 'L'],
-          category: categories.length > 0 ? categories[0].id : "",
-          slug: cols[0].replace(/"/g, '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-'),
-          in_stock: true
-        };
+        const product = parseProductRow(cols, categories);
         
         // Validate product
         if (!product.name || isNaN(product.price) || product.price <= 0) {
@@ -353,7 +362,8 @@ function BulkUpload() {
       const productsWithCategoryIds = products.map(product => ({
         ...product,
         category: product.category ? parseInt(product.category, 10) : 
-                  (categories.length > 0 ? categories[0].id : null)
+                  (categories.length > 0 ? categories[0].id : null),
+        subcategory: product.subcategory ? parseInt(product.subcategory, 10) : null
       }));
       
       // Create form data
@@ -396,25 +406,75 @@ function BulkUpload() {
         setImages([]);
         setPastedData('');
         
-        // Redirect to home after a delay
-        setTimeout(() => {
-          navigate('/');
-        }, 3000);
+        // Refresh existing products list
+        const newProductsResponse = await fetch('http://localhost:8000/api/products/', {
+          headers: {
+            'Authorization': `Token ${token}`
+          }
+        });
+        
+        if (newProductsResponse.ok) {
+          const newData = await newProductsResponse.json();
+          setExistingProducts(newData.results || newData);
+        }
+        
+        toast.success('Products uploaded successfully!');
       } else {
         console.error('Upload failed:', data);
         setError(data.detail || 'Upload failed');
+        toast.error('Upload failed: ' + (data.detail || 'Unknown error'));
       }
     } catch (error) {
       console.error('Error submitting products:', error);
       setError(`Error: ${error.message}`);
+      toast.error('Error: ' + error.message);
     } finally {
       setLoading(false);
     }
   };
   
+  // Delete product by ID
+const deleteProduct = async (productId) => {
+  if (!confirm('Are you sure you want to permanently delete this product?')) {
+    return;
+  }
+  
+  try {
+    setLoading(true);
+    const token = localStorage.getItem('authToken');
+    
+    // Use the correct URL pattern without the /delete/ suffix
+    const url = `http://localhost:8000/api/products/${productId}/`;
+    
+    console.log('Attempting to delete product at URL:', url);
+    
+    const response = await fetch(url, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Token ${token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to delete product: ${response.status} ${response.statusText}`);
+    }
+    
+    // Remove product from state
+    setExistingProducts(existingProducts.filter(product => product.id !== productId));
+    toast.success('Product deleted successfully');
+  } catch (error) {
+    console.error('Error deleting product:', error);
+    setError('Failed to delete product: ' + error.message);
+    toast.error('Failed to delete product: ' + error.message);
+  } finally {
+    setLoading(false);
+  }
+};
+  
   return (
-    <div className="max-w-4xl mx-auto p-4">
-      <h1 className="text-3xl font-bold mb-8">Bulk Upload Products</h1>
+    <div className="max-w-6xl mx-auto p-4">
+      <h1 className="text-3xl font-bold mb-8">Product Management</h1>
       
       {error && (
         <div className="bg-red-50 text-red-800 p-4 rounded-md mb-6 whitespace-pre-line">
@@ -427,6 +487,98 @@ function BulkUpload() {
           Products uploaded successfully!
         </div>
       )}
+      
+      {/* New section for existing products */}
+      <div className="bg-white p-6 rounded-lg shadow-sm mb-8">
+        <h2 className="text-xl font-semibold mb-4">Existing Products</h2>
+        
+        {existingProducts.length === 0 ? (
+          <p className="text-gray-500">No products found.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead>
+                <tr>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Image
+                  </th>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Name
+                  </th>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Price
+                  </th>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Category
+                  </th>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Subcategory
+                  </th>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    In Stock
+                  </th>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {existingProducts.map((product) => (
+                  <tr key={product.id}>
+                    <td className="px-4 py-2">
+                      <img 
+                        src={product.image || "https://placehold.co/100x100"}
+                        alt={product.name}
+                        className="w-16 h-16 object-cover rounded"
+                      />
+                    </td>
+                    <td className="px-4 py-2">
+                      {product.name}
+                    </td>
+                    <td className="px-4 py-2">
+                      ${parseFloat(product.price).toFixed(2)}
+                      {product.sale_price && (
+                        <span className="ml-2 text-red-500">
+                          ${parseFloat(product.sale_price).toFixed(2)}
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-4 py-2">
+                      {categories.find(c => c.id === product.category)?.name || 'Unknown'}
+                    </td>
+                    <td className="px-4 py-2">
+                      {product.subcategory_name || 'None'}
+                    </td>
+                    <td className="px-4 py-2">
+                      <span className={`px-2 py-1 text-xs rounded-full ${product.in_stock ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                        {product.in_stock ? 'In Stock' : 'Out of Stock'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2">
+                      <button
+                        type="button"
+                        onClick={() => deleteProduct(product.id)}
+                        className="text-red-600 hover:text-red-800 mr-3"
+                        disabled={loading}
+                      >
+                        Delete
+                      </button>
+                      <a
+                        href={`/product/${product.slug}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 hover:text-blue-800"
+                      >
+                        View
+                      </a>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
       
       <div className="bg-white p-6 rounded-lg shadow-sm mb-8">
         <h2 className="text-xl font-semibold mb-4">1. Enter Product Data</h2>
@@ -550,6 +702,9 @@ function BulkUpload() {
                     Category
                   </th>
                   <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Subcategory
+                  </th>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Sizes
                   </th>
                   <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -591,6 +746,21 @@ function BulkUpload() {
                         {categories.map(category => (
                           <option key={category.id} value={category.id}>
                             {category.name}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td className="px-4 py-2">
+                      <select
+                        value={product.subcategory || ""}
+                        onChange={(e) => handleProductChange(index, 'subcategory', e.target.value)}
+                        className="px-2 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-black"
+                        disabled={!product.category}
+                      >
+                        <option value="">Select Subcategory</option>
+                        {categories.find(c => c.id === parseInt(product.category))?.subcategories?.map(subcategory => (
+                          <option key={subcategory.id} value={subcategory.id}>
+                            {subcategory.name}
                           </option>
                         ))}
                       </select>
@@ -654,7 +824,7 @@ function BulkUpload() {
               : 'bg-black hover:bg-gray-800'
           } text-white rounded-md transition`}
         >
-          {loading ? 'Uploading...' : 'Upload Products'}
+          {loading ? 'Processing...' : 'Upload Products'}
         </button>
       )}
     </div>

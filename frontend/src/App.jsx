@@ -1,52 +1,62 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import { AuthProvider } from './context/AuthContext';
-import { CartProvider } from './context/CartContext';
-import ErrorBoundary from './components/ErrorBoundary';
+import { Toaster } from 'react-hot-toast';
+
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
-import Home from './pages/Home.jsx';
-import ProductDetail from './pages/ProductDetail.jsx';
-import Cart from './pages/Cart.jsx';
-import Login from './pages/Login.jsx';
-import Register from './pages/Register.jsx';
-import Checkout from './pages/Checkout.jsx';
-import OrderSuccess from './pages/OrderSuccess.jsx';
-import Profile from './pages/Profile.jsx';
-import BulkUpload from './pages/BulkUpload.jsx';
-import Addresses from './pages/Addresses.jsx';
-import OrderHistory from './pages/OrderHistory.jsx';
-import CategoryPage from './pages/CategoryPage.jsx'; // Import the new CategoryPage component
-import WishlistPage from './pages/WishlistPage'; // Import the WishlistPage component
-import AccountDashboard from './pages/AccountDashboard'; // Import AccountDashboard
-import SearchPage from './pages/SearchPage'; // Import SearchPage
+import Home from './pages/Home';
 import ProductsPage from './pages/ProductsPage';
-import { Toaster } from 'react-hot-toast';
-import ProfileEdit from './pages/ProfileEdit'; // Import ProfileEdit
+import CategoryPage from './pages/CategoryPage';
+import SearchPage from './pages/SearchPage';
+import ProductDetail from './pages/ProductDetail';
+import Cart from './pages/Cart';
+import Login from './pages/Login';
+import Register from './pages/Register';
+import OrderSuccess from './pages/OrderSuccess';
+import Checkout from './pages/Checkout';
+import Profile from './pages/Profile';
+import BulkUpload from './pages/BulkUpload';
+import Addresses from './pages/Addresses';
+import OrderHistory from './pages/OrderHistory';
+import WishlistPage from './pages/WishlistPage';
+import AccountDashboard from './pages/AccountDashboard';
+import ProfileEdit from './pages/ProfileEdit';
+import ProductManagement from './pages/ProductManagement';
+
 import ProtectedRoute from './components/ProtectedRoute';
+import ErrorBoundary from './components/ErrorBoundary';
+import { AuthProvider } from './context/AuthContext';
+import { CartProvider } from './context/CartContext';
 
 function App() {
   return (
     <ErrorBoundary>
       <AuthProvider>
         <CartProvider>
-          <Router>
+          {/* Add future flags to fix React Router warnings */}
+          <Router future={{
+            v7_startTransition: true,
+            v7_relativeSplatPath: true
+          }}>
             <div className="flex flex-col min-h-screen">
               <Navbar />
               <main className="flex-grow">
                 <Routes>
-                  {/* Public Routes */}
                   <Route path="/" element={<ErrorBoundary><Home /></ErrorBoundary>} />
                   <Route path="/products" element={<ErrorBoundary><ProductsPage /></ErrorBoundary>} />
                   <Route path="/category/:slug" element={<ErrorBoundary><CategoryPage /></ErrorBoundary>} />
                   <Route path="/search" element={<ErrorBoundary><SearchPage /></ErrorBoundary>} />
                   <Route path="/product/:slug" element={<ErrorBoundary><ProductDetail /></ErrorBoundary>} />
                   <Route path="/cart" element={<ErrorBoundary><Cart /></ErrorBoundary>} />
-                  <Route path="/login" element={<ErrorBoundary><Login /></ErrorBoundary>} />
+                  <Route path="/login" element={
+                    <ErrorBoundary>
+                      <Login />
+                    </ErrorBoundary>
+                  } />
                   <Route path="/register" element={<ErrorBoundary><Register /></ErrorBoundary>} />
                   <Route path="/order-success" element={<ErrorBoundary><OrderSuccess /></ErrorBoundary>} />
                   
-                  {/* Protected Routes */}
+                  {/* Protected routes */}
                   <Route 
                     path="/checkout" 
                     element={
@@ -120,6 +130,14 @@ function App() {
                       </ProtectedRoute>
                     } 
                   />
+                  <Route 
+                    path="/admin/products" 
+                    element={
+                      <ProtectedRoute>
+                        <ErrorBoundary><ProductManagement /></ErrorBoundary>
+                      </ProtectedRoute>
+                    } 
+                  />
                 </Routes>
               </main>
               <Footer />
@@ -127,6 +145,7 @@ function App() {
           </Router>
         </CartProvider>
       </AuthProvider>
+      <Toaster position="top-right" />
     </ErrorBoundary>
   );
 }

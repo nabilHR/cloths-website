@@ -6,6 +6,7 @@ import WishlistButton from '../components/WishlistButton';
 import { showToast } from '../utils/toast';
 import { api } from '../utils/api';
 import ImageWithFallback from '../components/ImageWithFallback';
+import { toast } from 'react-hot-toast';
 
 function ProductDetail() {
   const { slug } = useParams();
@@ -28,12 +29,19 @@ function ProductDetail() {
     const fetchProduct = async () => {
       try {
         setLoading(true);
-        const { data, error } = await api.get(`http://localhost:8000/api/products/${slug}/`);
+        const response = await fetch(`http://localhost:8000/api/products/${slug}/`);
         
-        if (error) {
-          throw new Error(error.error || 'Product not found');
+        if (!response.ok) {
+          if (response.status === 404) {
+            throw new Error('Product not found');
+          } else if (response.status === 401) {
+            throw new Error('Please log in to view this product');
+          } else {
+            throw new Error(`Error ${response.status}: ${response.statusText}`);
+          }
         }
         
+        const data = await response.json();
         setProduct(data);
         
         // If we have the product, fetch related products
@@ -43,6 +51,14 @@ function ProductDetail() {
       } catch (err) {
         console.error('Error fetching product:', err);
         setError(err.message);
+        
+        // Show toast notification for better UX
+        toast.error(err.message);
+        
+        // Optionally redirect to products page after a delay
+        setTimeout(() => {
+          navigate('/products');
+        }, 3000);
       } finally {
         setLoading(false);
       }
@@ -68,7 +84,7 @@ function ProductDetail() {
     if (slug) {
       fetchProduct();
     }
-  }, [slug]);
+  }, [slug, navigate]);
 
   // 1. Add this useEffect to set default size when product loads
   useEffect(() => {
@@ -82,6 +98,30 @@ function ProductDetail() {
       }
     }
   }, [product]);
+
+  // Add this helper function at the beginning of your component
+  const formatSizes = (sizes) => {
+    if (!sizes) return [];
+    
+    if (Array.isArray(sizes)) {
+      return sizes;
+    }
+    
+    if (typeof sizes === 'string') {
+      // If it's a JSON string, parse it
+      if (sizes.includes('[') && sizes.includes(']')) {
+        try {
+          return JSON.parse(sizes);
+        } catch (e) {
+          return sizes.split(',').map(s => s.trim());
+        }
+      }
+      // If it's a comma-separated string
+      return sizes.split(',').map(s => s.trim());
+    }
+    
+    return [];
+  };
 
   // Handle cart addition
   const handleAddToCart = () => {
@@ -112,16 +152,9 @@ function ProductDetail() {
   if (loading) {
     return (
       <div className="max-w-7xl mx-auto px-4 py-12 sm:px-6 lg:px-8">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-12 animate-pulse">
-          <div className="bg-gray-200 rounded-lg h-96"></div>
-          <div>
-            <div className="h-10 bg-gray-200 rounded w-3/4 mb-4"></div>
-            <div className="h-6 bg-gray-200 rounded w-1/4 mb-8"></div>
-            <div className="h-24 bg-gray-200 rounded mb-8"></div>
-            <div className="h-10 bg-gray-200 rounded mb-4"></div>
-            <div className="h-10 bg-gray-200 rounded mb-8"></div>
-            <div className="h-12 bg-gray-200 rounded"></div>
-          </div>
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 mx-auto"></div>
+          <p className="mt-4 text-xl">Loading product...</p>
         </div>
       </div>
     );
@@ -297,33 +330,26 @@ function ProductDetail() {
             </div>
           )}
           
-          {/* Size Selection */}
-          {product.sizes && product.sizes.length > 0 && (
-            <div className="mb-6">
-              <h3 className="text-sm uppercase tracking-wide mb-3">Size</h3>
-              <div className="flex flex-wrap gap-2">
-                {product.sizes.map(size => {
-                  // Handle if size is an object or a string
-                  const sizeValue = typeof size === 'object' ? size.value || size.name : size;
-                  const sizeName = typeof size === 'object' ? size.name : size;
-                  
-                  return (
-                    <button
-                      key={sizeValue}
-                      onClick={() => setSelectedSize(sizeValue)}
-                      className={`px-4 py-2 border ${
-                        selectedSize === sizeValue 
-                        ? 'border-black bg-black text-white' 
-                        : 'border-gray-300 hover:border-black'
-                      }`}
-                    >
-                      {sizeName}
-                    </button>
-                  );
-                })}
-              </div>
+          {/* Size selector */}
+          <div className="mt-6">
+            <h3 className="text-sm font-medium text-gray-900">Size</h3>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {product && formatSizes(product.sizes).map((size, index) => (
+                <button
+                  key={index}
+                  type="button"
+                  onClick={() => setSelectedSize(size)}
+                  className={`px-4 py-2 text-sm border rounded-md ${
+                    selectedSize === size
+                      ? 'bg-black text-white border-black'
+                      : 'border-gray-300 text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  {size}
+                </button>
+              ))}
             </div>
-          )}
+          </div>
           
           {/* Quantity */}
           <div className="mb-8">

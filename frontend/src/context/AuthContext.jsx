@@ -5,53 +5,34 @@ import { api } from '../utils/api';
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [user, setUser] = useState(null);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshToken, setRefreshToken] = useState(
     localStorage.getItem('refreshToken') || null
   );
   
+  // This runs on initial load and checks auth status
   useEffect(() => {
     const checkAuthStatus = async () => {
       setLoading(true);
       
       try {
-        // Check if token exists in localStorage
         const token = localStorage.getItem('authToken');
         const userData = JSON.parse(localStorage.getItem('user') || '{}');
         
         if (!token) {
-          // No token found, user is not authenticated
           setIsAuthenticated(false);
           setUser(null);
           return;
         }
         
-        // If we have a token, consider the user authenticated
-        setIsAuthenticated(true);
+        // Token exists, consider user authenticated
         setUser(userData);
-        
-        // Test if token is still valid by making a simple API call
-        try {
-          const testResponse = await fetch('http://localhost:8000/api/users/profile/', {
-            headers: {
-              'Authorization': `Token ${token}`
-            }
-          });
-          
-          if (!testResponse.ok) {
-            // Token is invalid, clear auth state
-            throw new Error('Invalid token');
-          }
-        } catch (error) {
-          console.error('Token validation failed:', error);
-          logout(); // Call your logout function
-        }
+        setIsAuthenticated(true);
         
       } catch (error) {
         console.error('Auth check error:', error);
-        // Clear invalid auth data
         localStorage.removeItem('authToken');
         localStorage.removeItem('user');
         setIsAuthenticated(false);
@@ -62,6 +43,17 @@ export function AuthProvider({ children }) {
     };
     
     checkAuthStatus();
+    
+    // Optional: Listen for localStorage changes from other tabs
+    window.addEventListener('storage', (event) => {
+      if (event.key === 'authToken') {
+        checkAuthStatus();
+      }
+    });
+    
+    return () => {
+      window.removeEventListener('storage', checkAuthStatus);
+    };
   }, []);
   
   const login = (token, userData) => {

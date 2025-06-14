@@ -4,31 +4,35 @@ from .views import (
     CategoryViewSet, 
     ProductViewSet, 
     OrderViewSet,
-    ReviewViewSet,  # Now you can include this
+    ReviewViewSet,
     BulkProductUploadView,
-    ShippingAddressViewSet,  # Include the ShippingAddressViewSet
-    WishlistViewSet,  # Include the WishlistViewSet
-    UserProfileViewSet,  # Include the UserProfileViewSet
-    AddressViewSet,  # Include the AddressViewSet
-    UserReviewViewSet  # Include the UserReviewViewSet
+    ShippingAddressViewSet,
+    WishlistViewSet,
+    UserProfileViewSet,
+    AddressViewSet,
+    UserReviewViewSet
 )
-from . import views  # Add this import
+from . import views
 
-# Create a router for store app endpoints
+# Create a router for REST API endpoints
 router = DefaultRouter()
 router.register(r'categories', CategoryViewSet)
 router.register(r'products', ProductViewSet, basename='product')
 router.register(r'orders', OrderViewSet, basename='order')
-router.register(r'reviews', ReviewViewSet, basename='review')  # Uncomment this
-router.register(r'shipping-addresses', ShippingAddressViewSet, basename='shipping-address')  # Register the new viewset
-router.register(r'wishlist', WishlistViewSet, basename='wishlist')  # Register the Wishlist viewset
+router.register(r'reviews', ReviewViewSet, basename='review')
+router.register(r'shipping-addresses', ShippingAddressViewSet, basename='shipping-address')
+router.register(r'wishlist', WishlistViewSet, basename='wishlist')
 router.register(r'users/profile', UserProfileViewSet, basename='user-profile')
 router.register(r'addresses', AddressViewSet, basename='address')
 router.register(r'reviews/my-reviews', UserReviewViewSet, basename='user-review')
+router.register(r'subcategories', views.SubCategoryViewSet, basename='subcategory')
 
 # Define URL patterns
 urlpatterns = [
-    # Main app URLs
+    # REST API endpoints
+    path('api/', include(router.urls)),
+    
+    # Traditional Django views (template-based)
     path('products/', views.product_list, name='product_list'),
     path('products/<slug:slug>/', views.product_detail, name='product_detail'),
     

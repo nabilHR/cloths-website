@@ -5,7 +5,7 @@ from .models import Category, SubCategory, Product, Order, OrderItem, Review, Pr
 class SubCategorySerializer(serializers.ModelSerializer):
     class Meta:
         model = SubCategory
-        fields = ['id', 'name', 'slug', 'description', 'image']
+        fields = ['id', 'name', 'slug', 'category', 'description', 'image']
 
 class CategorySerializer(serializers.ModelSerializer):
     subcategories = SubCategorySerializer(many=True, read_only=True)
@@ -22,11 +22,60 @@ class ProductImageSerializer(serializers.ModelSerializer):
 class ProductSerializer(serializers.ModelSerializer):
     average_rating = serializers.FloatField(read_only=True)
     review_count = serializers.IntegerField(read_only=True)
+    # Add category name for easier debugging
+    category_name = serializers.SerializerMethodField()
+    
+    def get_category_name(self, obj):
+        return obj.category.name if obj.category else None
+    
+    # Add robust error handling to the to_representation method
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        
+        # Handle sizes field with better error handling
+        try:
+            # Ensure sizes is always an array
+            if 'sizes' in data:
+                if data['sizes'] is None:
+                    data['sizes'] = []  # Handle None values
+                elif isinstance(data['sizes'], str):
+                    # If sizes is stored as a string, convert to array
+                    if data['sizes'].strip():  # Check if string is not empty
+                        if (data['sizes'].strip().startswith('[') and 
+                            data['sizes'].strip().endswith(']')):
+                            try:
+                                # If it's already JSON formatted
+                                import json
+                                data['sizes'] = json.loads(data['sizes'])
+                            except Exception:
+                                # Fallback to comma splitting
+                                data['sizes'] = [size.strip() for size in data['sizes'].split(',')]
+                        else:
+                            # Simple comma splitting
+                            data['sizes'] = [size.strip() for size in data['sizes'].split(',')]
+                    else:
+                        data['sizes'] = []  # Handle empty strings
+                elif not isinstance(data['sizes'], list):
+                    # Convert any other type to a list with a single item
+                    data['sizes'] = [str(data['sizes'])]
+            else:
+                # If sizes field doesn't exist, add it as an empty array
+                data['sizes'] = []
+        except Exception as e:
+            # Fallback to empty array if any error occurs during conversion
+            print(f"Error processing sizes for product {instance.id if hasattr(instance, 'id') else 'unknown'}: {str(e)}")
+            data['sizes'] = []
+        
+        return data
     
     class Meta:
         model = Product
-        fields = ['id', 'name', 'slug', 'description', 'price', 'image', 'category', 
-                 'average_rating', 'review_count', 'sizes', 'in_stock']
+        fields = [
+            'id', 'name', 'slug', 'description', 'price', 'sale_price',
+            'category', 'subcategory', 'in_stock', 'sizes', 'colors',
+            'image', 'featured', 'average_rating', 'review_count',
+            'created_at', 'updated_at', 'sku', 'category_name'
+        ]
 
 class OrderItemSerializer(serializers.ModelSerializer):
     product = ProductSerializer()

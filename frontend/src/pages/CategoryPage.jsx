@@ -23,24 +23,62 @@ function CategoryPage() {
     const fetchCategoryProducts = async () => {
       setLoading(true);
       try {
-        // First get the category
-        const categoryResponse = await fetch(`http://localhost:8000/api/categories/?slug=${slug}`);
-        if (!categoryResponse.ok) {
-          throw new Error('Category not found');
-        }
-        const categoryData = await categoryResponse.json();
-        if (categoryData.length === 0) {
-          throw new Error('Category not found');
-        }
-        setCategory(categoryData[0]);
+        let categoryId, subcategoryId;
         
-        // Get all URL parameters for filtering
+        // First determine if we're looking at a main category or a subcategory
+        const categoryResponse = await fetch(`http://localhost:8000/api/categories/?slug=${slug}`);
+        
+        if (!categoryResponse.ok) {
+          throw new Error(`Error fetching category: ${categoryResponse.status}`);
+        }
+        
+        const categoryData = await categoryResponse.json();
+        
+        // Only try to fetch subcategory if category not found
+        if (categoryData.length === 0) {
+          const subcategoryResponse = await fetch(`http://localhost:8000/api/subcategories/?slug=${slug}`);
+          
+          if (!subcategoryResponse.ok) {
+            throw new Error(`Error fetching subcategory: ${subcategoryResponse.status}`);
+          }
+          
+          const subcategoryData = await subcategoryResponse.json();
+          
+          if (subcategoryData.length > 0) {
+            setCategory({
+              ...subcategoryData[0],
+              name: subcategoryData[0].name,
+              parent_category: subcategoryData[0].category
+            });
+            subcategoryId = subcategoryData[0].id;
+            categoryId = subcategoryData[0].category;
+          } else {
+            throw new Error('Category not found');
+          }
+        } else {
+          setCategory(categoryData[0]);
+          categoryId = categoryData[0].id;
+        }
+        
+        // Build API params
         const apiParams = new URLSearchParams();
-        apiParams.set('category', categoryData[0].id.toString());
+        
+        // Ensure categoryId is a number and correctly set
+        if (categoryId) {
+          apiParams.set('category', categoryId.toString());
+          
+          // For debugging, log the exact URL you're calling
+          console.log(`Fetching products with category ID: ${categoryId}`);
+        }
+        
+        // If we're viewing a subcategory, add subcategory filter
+        if (subcategoryId) {
+          apiParams.set('subcategory', subcategoryId.toString());
+        }
         
         // Add all other query parameters
         for (const [key, value] of queryParams.entries()) {
-          if (key !== 'category') { // Skip category as we've already set it
+          if (!['category', 'subcategory'].includes(key)) {
             apiParams.set(key, value);
           }
         }
@@ -52,15 +90,24 @@ function CategoryPage() {
         const productsResponse = await fetch(productsUrl);
         
         if (!productsResponse.ok) {
-          throw new Error('Failed to fetch products');
+          const errorText = await productsResponse.text();
+          console.error('Server response:', errorText);
+          throw new Error(`Failed to fetch products: ${productsResponse.status} ${productsResponse.statusText}`);
         }
         
         const productsData = await productsResponse.json();
-        setProducts(productsData);
+        console.log(`Category ID: ${categoryId}, Products returned:`, productsData);
         
+        // Log each product's category to verify
+        if (Array.isArray(productsData)) {
+          console.log("Product categories in response:", 
+            productsData.map(p => ({id: p.id, name: p.name, category: p.category})));
+        }
+
+        setProducts(productsData.results || productsData || []);
       } catch (err) {
+        console.error('Error details:', err);
         setError(err.message);
-        console.error('Error fetching products:', err);
       } finally {
         setLoading(false);
       }
@@ -203,15 +250,38 @@ function CategoryPage() {
             Test Price Filter (10-50)
           </button>
           
+          <button 
+            onClick={() => {
+              const catId = category?.id;
+              fetch(`http://localhost:8000/api/products/?category=${catId}`)
+                .then(res => res.json())
+                .then(data => {
+                  console.log(`Direct API call with category=${catId} returned:`, data);
+                  console.log("Products by category:", 
+                    data.map(p => ({id: p.id, name: p.name, category: p.category})));
+                })
+                .catch(err => console.error("API test failed:", err));
+            }}
+            className="px-4 py-2 bg-black text-white mb-4 mr-2"
+          >
+            Test Current Category Filter
+          </button>
+          
           {products.length === 0 ? (
             <div className="text-center py-12">
               <p className="text-gray-500">No products found in this category.</p>
             </div>
           ) : view === 'grid' ? (
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4 md:gap-6">
-              {products.map(product => (
-                <ProductCard key={product.id} product={product} minimal={true} />
-              ))}
+              {Array.isArray(products) && products.length > 0 ? (
+                products.map((product) => (
+                  <ProductCard key={product.id} product={product} />
+                ))
+              ) : (
+                <div className="col-span-full text-center py-10">
+                  <p className="text-gray-500">No products found matching your criteria.</p>
+                </div>
+              )}
             </div>
           ) : (
             <div className="space-y-6">

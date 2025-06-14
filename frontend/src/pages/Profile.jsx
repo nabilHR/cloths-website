@@ -50,8 +50,7 @@ function Profile() {
   }, []);
 
   const renderProfileContent = () => {
-    // Debug current userData state
-    console.log("Rendering profile with userData:", userData);
+    console.log("Current userData:", userData);
     
     return (
       <div className="bg-white p-6 rounded-lg shadow-sm">
@@ -68,10 +67,6 @@ function Profile() {
           <div>
             <h3 className="text-gray-500 text-sm">Email</h3>
             <p className="font-medium">{userData.email || 'Not provided'}</p>
-          </div>
-          <div>
-            <h3 className="text-gray-500 text-sm">Username</h3>
-            <p className="font-medium">{userData.username || 'Not provided'}</p>
           </div>
         </div>
       </div>

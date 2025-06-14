@@ -1,9 +1,17 @@
-from django.contrib.auth.models import User  # Add this import
-from rest_framework import viewsets, serializers
-from rest_framework.decorators import action
+from django.contrib.auth.models import User
+from django.contrib.auth import get_user_model
+from rest_framework import viewsets, permissions, status
 from rest_framework.response import Response
+from rest_framework.decorators import action
+from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated, AllowAny
-from .models import Review, Product, Category, Order, ShippingAddress, WishlistItem, UserProfile, Address
+from rest_framework.authtoken.models import Token
+from django.utils.text import slugify
+from django.db import transaction
+from django.core.mail import send_mail
+from django.template.loader import render_to_string
+from django.conf import settings
+from .models import Review, Product, Category, Order, OrderItem, ShippingAddress, WishlistItem, UserProfile, Address, SubCategory
 from .serializers import (
     RegisterSerializer, 
     CategorySerializer, 
@@ -13,19 +21,9 @@ from .serializers import (
     ShippingAddressSerializer,
     WishlistItemSerializer,
     UserProfileSerializer,
-    AddressSerializer
+    AddressSerializer,
+    SubCategorySerializer
 )
-from rest_framework import viewsets, status
-from rest_framework.response import Response
-from rest_framework.permissions import AllowAny, IsAuthenticated, IsAdminUser
-from rest_framework.authtoken.models import Token
-from rest_framework.views import APIView
-from rest_framework.decorators import action
-from django.utils.text import slugify
-from django.db import transaction
-from django.core.mail import send_mail
-from django.template.loader import render_to_string
-from django.conf import settings
 import json
 import os
 import uuid
@@ -35,7 +33,7 @@ from .pagination import CustomPagination
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib import messages
-from .models import Product, ProductImage, Category, SubCategory
+from .models import ProductImage
 
 
 
@@ -53,95 +51,138 @@ class CategoryViewSet(viewsets.ModelViewSet):
             raise
 
 class ProductViewSet(viewsets.ModelViewSet):
+    """
+    API endpoint for products - public GET access, authenticated for other operations
+    """
     serializer_class = ProductSerializer
-    lookup_field = 'slug'  # Ensure this is set to use slugs
+    
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve', 'get_by_slug']:
+            return [permissions.AllowAny()]
+        return [permissions.IsAuthenticated()]
     
     def get_queryset(self):
-        queryset = Product.objects.all()
+        queryset = Product.objects.all().order_by('-created_at')
         
-        # Text search
-        search_query = self.request.query_params.get('search', None)
-        if search_query:
-            queryset = queryset.filter(
-                Q(name__icontains=search_query) | 
-                Q(description__icontains=search_query)
-            )
-            
-        # Price range filtering - fully fixed version
-        min_price = self.request.query_params.get('min_price')
-        if min_price and min_price.strip():  # Ensure not empty string
+        # Debug logging for category filtering
+        category = self.request.query_params.get('category')
+        if category:
+            print(f"Filtering products by category ID: {category}")
             try:
-                min_price_float = float(min_price)
-                print(f"🔍🔍🔍 APPLYING MIN PRICE FILTER: {min_price_float}")
-                queryset = queryset.filter(price__gte=min_price_float)
-            except (ValueError, TypeError) as e:
-                print(f"❌❌❌ ERROR PARSING MIN_PRICE: {min_price}, Error: {e}")
+                # Explicit conversion to integer for exact matching
+                category_id = int(category)
+                queryset = queryset.filter(category_id=category_id)
                 
-        max_price = self.request.query_params.get('max_price')
-        if max_price:
-            try:
-                max_price_float = float(max_price)
-                queryset = queryset.filter(price__lte=max_price_float)
-                print(f"⭐ Applying max_price filter: {max_price_float}")
-            except (ValueError, TypeError):
-                print(f"⭐ Invalid max_price value: {max_price}")
-        
-        # Category filtering
-        category_id = self.request.query_params.get('category')
-        if category_id:
-            queryset = queryset.filter(category_id=category_id)
-            
-        # Size filtering
-        size = self.request.query_params.get('size')
-        if size:
-            # Assuming sizes are stored in a field called 'sizes'
-            # Modify this based on your actual model structure
-            queryset = queryset.filter(sizes__icontains=size)
-            
-        # Sort options
-        sort_by = self.request.query_params.get('sort_by')
-        if sort_by:
-            if sort_by == 'price_low':
-                queryset = queryset.order_by('price')
-            elif sort_by == 'price_high':
-                queryset = queryset.order_by('-price')
-            elif sort_by == 'newest':
-                queryset = queryset.order_by('-created_at')
-            elif sort_by == 'name_asc':
-                queryset = queryset.order_by('name')
+                # Debug log
+                print(f"Found {queryset.count()} products in category {category_id}")
                 
-        result_count = queryset.count()
-        print(f"⭐ Final query returned {result_count} products")
-        return queryset.distinct()
+                # Log each product for verification
+                for product in queryset[:5]:  # First 5 for brevity
+                    print(f"Product ID: {product.id}, Name: {product.name}, Category: {product.category_id}")
+                    
+            except ValueError:
+                print(f"Invalid category ID: {category}")
+                queryset = Product.objects.none()
     
-    @action(detail=False, methods=['get'], url_path='search-suggestions')
-    def search_suggestions(self, request):
-        query = request.query_params.get('q', '')
-        if not query or len(query) < 2:
-            return Response([])
+        # Other filters (subcategory, featured, etc.)
+        subcategory = self.request.query_params.get('subcategory')
+        if subcategory:
+            queryset = queryset.filter(subcategory_id=subcategory)
             
-        # Simple search for demo
-        products = self.get_queryset().filter(
-            Q(name__icontains=query) | 
-            Q(description__icontains=query) |
-            Q(category__name__icontains=query)
-        )[:8]  # Limit to 8 results
+        featured = self.request.query_params.get('featured')
+        if featured and featured.lower() == 'true':
+            queryset = queryset.filter(featured=True)
+            
+        return queryset
         
-        serializer = self.get_serializer(products, many=True)
-        return Response(serializer.data)
+    # Add explicit delete method to ensure it works
+    def destroy(self, request, *args, **kwargs):
+        try:
+            instance = self.get_object()
+            self.perform_destroy(instance)
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        except Exception as e:
+            return Response(
+                {"detail": f"Error deleting product: {str(e)}"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+    @action(detail=False, methods=['get'], url_path='(?P<slug>[-\w]+)', permission_classes=[permissions.AllowAny])
+    def get_by_slug(self, request, slug=None):
+        """Get a product by its slug"""
+        try:
+            product = Product.objects.get(slug=slug)
+            serializer = self.get_serializer(product)
+            return Response(serializer.data)
+        except Product.DoesNotExist:
+            return Response(
+                {"detail": "Product not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
 
 class RegisterView(APIView):
-    permission_classes = [AllowAny]
-
+    permission_classes = [permissions.AllowAny]
+    
     def post(self, request):
-        serializer = RegisterSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        user = serializer.save()
-        token, _ = Token.objects.get_or_create(user=user)
-        return Response(
-            {"token": token.key, "user": serializer.data},
-            status=status.HTTP_201_CREATED,
+        User = get_user_model()
+        
+        # Get user data from request
+        username = request.data.get('username')
+        email = request.data.get('email')
+        password = request.data.get('password')
+        first_name = request.data.get('first_name', '')
+        last_name = request.data.get('last_name', '')
+        
+        # Validate required fields
+        if not username or not email or not password:
+            return Response(
+                {'error': 'Username, email and password are required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Check if user already exists
+        if User.objects.filter(username=username).exists():
+            return Response(
+                {'error': 'Username already exists'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if User.objects.filter(email=email).exists():
+            return Response(
+                {'error': 'Email already exists'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Create user
+        user = User.objects.create_user(
+            username=username,
+            email=email,
+            password=password,
+            first_name=first_name,
+            last_name=last_name
         )
+        
+        # Create token for user
+        token, created = Token.objects.get_or_create(user=user)
+        
+        # Return user data and token
+        user_data = {
+            'id': user.id,
+            'username': user.username,
+            'email': user.email,
+            'first_name': user.first_name,
+            'last_name': user.last_name,
+            'date_joined': user.date_joined.isoformat(),
+            'profile': {
+                'phone_number': user.profile.phone_number if hasattr(user, 'profile') else None,
+                # Add other profile fields as needed
+            } if hasattr(user, 'profile') else None
+        }
+        
+        return Response({
+            'user': user_data,
+            'token': token.key
+        }, status=status.HTTP_201_CREATED)
 
 class OrderViewSet(viewsets.ModelViewSet):
     serializer_class = OrderSerializer
@@ -342,27 +383,37 @@ class BulkProductUploadView(APIView):
                         else:
                             # Use first category as fallback
                             category = Category.objects.first()
-                        print(f"Using category: {category.name}")
                     except Category.DoesNotExist:
                         category = Category.objects.first()
                         print(f"Category not found, using: {category.name}")
                     
-                    # Make sure price is a float
-                    try:
-                        price = float(product_data['price'])
-                    except (ValueError, TypeError):
-                        print(f"Invalid price: {product_data.get('price')}, using 0.0")
-                        price = 0.0
+                    # Get subcategory if provided
+                    subcategory = None
+                    subcategory_id = product_data.get('subcategory')
+                    if subcategory_id:
+                        try:
+                            subcategory = SubCategory.objects.get(
+                                id=subcategory_id, 
+                                category=category
+                            )
+                        except SubCategory.DoesNotExist:
+                            # Subcategory doesn't exist or doesn't belong to the category
+                            pass
                     
                     # Create product
                     product = Product.objects.create(
                         name=product_data['name'],
                         slug=product_data['slug'],
                         description=product_data.get('description', ''),
-                        price=price,
+                        price=float(product_data['price']),
+                        sale_price=product_data.get('sale_price'),
                         category=category,
-                        sizes=product_data.get('sizes', ['S', 'M', 'L']),
-                        in_stock=True
+                        subcategory=subcategory,  # Add subcategory
+                        sizes=product_data.get('sizes', []),
+                        colors=product_data.get('colors', []),
+                        featured=product_data.get('featured', False),
+                        in_stock=product_data.get('in_stock', True),
+                        sku=product_data.get('sku', '')
                     )
                     print(f"Created product: {product.name} (ID: {product.id})")
                     
@@ -593,14 +644,13 @@ class UserViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     queryset = User.objects.all()
     
-    @action(detail=False, methods=['get', 'put'])  # Add 'put' to allowed methods
+    @action(detail=False, methods=['get', 'put'])
     def me(self, request):
         """Get or update current user profile"""
         user = request.user
         
         # Handle PUT requests (updates)
         if request.method == 'PUT':
-            # Extract data from request
             data = request.data
             
             # Only update fields that are provided and not empty
@@ -610,26 +660,10 @@ class UserViewSet(viewsets.ModelViewSet):
             if 'last_name' in data and data['last_name']:
                 user.last_name = data['last_name']
             
-            if 'username' in data and data['username']:
-                user.username = data['username']
-            
             # Save the user object
             user.save()
             
-            # Return the updated user data
-            return Response({
-                'id': user.id,
-                'email': user.email,
-                'first_name': user.first_name,
-                'last_name': user.last_name,
-                'username': user.username,
-                'bio': getattr(user.profile, 'bio', None) if hasattr(user, 'profile') else None,
-                'profile_picture': getattr(user.profile, 'profile_picture', None) if hasattr(user, 'profile') else None,
-                'phone_number': getattr(user.profile, 'phone_number', None) if hasattr(user, 'profile') else None,
-                'date_joined': user.date_joined
-            })
-        
-        # Handle GET requests (fetching profile)
+        # Return the user data (for both GET and after PUT)
         return Response({
             'id': user.id,
             'email': user.email,
@@ -639,5 +673,26 @@ class UserViewSet(viewsets.ModelViewSet):
             'bio': getattr(user.profile, 'bio', None) if hasattr(user, 'profile') else None,
             'profile_picture': getattr(user.profile, 'profile_picture', None) if hasattr(user, 'profile') else None,
             'phone_number': getattr(user.profile, 'phone_number', None) if hasattr(user, 'profile') else None,
-            'date_joined': user.date_joined
+            'date_joined': user.date_joined.isoformat() if user.date_joined else None,
         })
+
+# Fix the SubCategoryViewSet
+class SubCategoryViewSet(viewsets.ModelViewSet):
+    """API endpoint for subcategories"""
+    serializer_class = SubCategorySerializer
+    permission_classes = [permissions.AllowAny]  # Public access
+    
+    def get_queryset(self):
+        queryset = SubCategory.objects.all()
+        
+        # Filter by slug if provided
+        slug = self.request.query_params.get('slug')
+        if slug:
+            queryset = queryset.filter(slug=slug)
+            
+        # Filter by category if provided
+        category = self.request.query_params.get('category')
+        if category:
+            queryset = queryset.filter(category_id=category)
+            
+        return queryset

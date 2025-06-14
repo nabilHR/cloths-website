@@ -12,6 +12,27 @@ function ProductCard({ product, minimal = false }) {
   const mainImage = product.image;
   const hoverImage = product.images?.length > 0 ? product.images[0].image : product.image;
   
+  // Format sizes safely regardless of data type
+  const formatSizes = (sizes) => {
+    if (!sizes) return 'N/A';
+    
+    if (Array.isArray(sizes)) {
+      return sizes.join(', ');
+    }
+    
+    if (typeof sizes === 'string') {
+      // If it's already a string, just return it or split and rejoin if needed
+      return sizes.includes('[') && sizes.includes(']') 
+        ? JSON.parse(sizes).join(', ') 
+        : sizes;
+    }
+    
+    // Handle any other data type
+    return String(sizes);
+  };
+
+  if (!product) return null;
+  
   return (
     <div 
       className="group relative"
@@ -24,6 +45,10 @@ function ProductCard({ product, minimal = false }) {
             src={isHovered && hoverImage ? hoverImage : mainImage}
             alt={product.name}
             className="object-cover w-full h-full transition-opacity group-hover:opacity-75"
+            onError={(e) => {
+              e.target.onerror = null;
+              e.target.src = "https://placehold.co/300x400";
+            }}
           />
         </div>
         
@@ -34,7 +59,11 @@ function ProductCard({ product, minimal = false }) {
           
           {!minimal && (
             <div className="mt-1 text-xs text-gray-500">
-              {product.sizes.join(" / ")}
+              {product.sizes && (
+                <p className="mt-1 text-xs text-gray-500">
+                  {formatSizes(product.sizes)}
+                </p>
+              )}
             </div>
           )}
         </div>
