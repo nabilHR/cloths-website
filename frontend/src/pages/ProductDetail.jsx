@@ -102,24 +102,24 @@ function ProductDetail() {
   // Add this helper function at the beginning of your component
   const formatSizes = (sizes) => {
     if (!sizes) return [];
-    
     if (Array.isArray(sizes)) {
-      return sizes;
+      return sizes.map(s => String(s).replace(/[\[\]'"]/g, '').trim()).filter(Boolean);
     }
-    
     if (typeof sizes === 'string') {
-      // If it's a JSON string, parse it
-      if (sizes.includes('[') && sizes.includes(']')) {
-        try {
-          return JSON.parse(sizes);
-        } catch (e) {
-          return sizes.split(',').map(s => s.trim());
+      try {
+        const parsed = JSON.parse(sizes);
+        if (Array.isArray(parsed)) {
+          return parsed.map(s => String(s).replace(/[\[\]'"]/g, '').trim()).filter(Boolean);
         }
+      } catch {
+        return sizes
+        .replace(/[\[\]'"]/g, '')
+        .replace(/\r?\n/g, ',')
+        .split(',')
+        .map(s => s.trim())
+        .filter(Boolean);
       }
-      // If it's a comma-separated string
-      return sizes.split(',').map(s => s.trim());
     }
-    
     return [];
   };
 
@@ -271,14 +271,14 @@ function ProductDetail() {
           <div className="mb-6">
             {product.sale_price && product.sale_price < product.price ? (
               <div className="flex items-center">
-                <span className="text-xl font-medium text-red-600 mr-2">${product.sale_price}</span>
-                <span className="text-lg text-gray-500 line-through">${product.price}</span>
+                <span className="text-xl font-medium text-red-600 mr-2">{product.sale_price} MAD</span>
+                <span className="text-lg text-gray-500 line-through">{product.price} MAD</span>
                 <span className="ml-2 bg-red-100 text-red-800 text-xs px-2 py-1 rounded">
                   {Math.round((1 - product.sale_price / product.price) * 100)}% OFF
                 </span>
               </div>
             ) : (
-              <span className="text-xl font-medium">${product.price}</span>
+              <span className="text-xl font-medium">{product.price} MAD</span>
             )}
           </div>
           
@@ -313,18 +313,11 @@ function ProductDetail() {
               <div className="flex flex-wrap gap-2">
                 {product.colors.map(color => (
                   <button
-                    key={color.value}
-                    onClick={() => setSelectedColor(color.value)}
-                    className={`w-10 h-10 rounded-full border-2 ${
-                      selectedColor === color.value 
-                      ? 'border-black' 
-                      : 'border-transparent'
-                    }`}
-                    style={{ backgroundColor: color.value }}
-                    title={color.name}
-                  >
-                    <span className="sr-only">{color.name}</span>
-                  </button>
+                    key={color}
+                    onClick={() => setSelectedColor(color)}
+                    className={`w-8 h-8 rounded-full ${selectedColor === color ? 'ring-2 ring-black' : ''}`}
+                    style={{ backgroundColor: color }}
+                  ></button>
                 ))}
               </div>
             </div>
@@ -354,18 +347,20 @@ function ProductDetail() {
           {/* Quantity */}
           <div className="mb-8">
             <h3 className="text-sm uppercase tracking-wide mb-3">Quantity</h3>
-            <div className="flex border border-gray-300">
-              <button 
+            <div className="flex items-center space-x-2">
+              <button
                 onClick={() => setQuantity(Math.max(1, quantity - 1))}
-                className="px-4 py-2 border-r border-gray-300"
                 disabled={quantity <= 1}
+                className="w-10 h-10 flex items-center justify-center rounded-full border border-gray-300 bg-white text-gray-700 text-2xl font-bold hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                aria-label="Decrease quantity"
               >
-                -
+                −
               </button>
-              <div className="px-6 py-2">{quantity}</div>
-              <button 
+              <span className="w-12 text-center text-lg font-semibold select-none">{quantity}</span>
+              <button
                 onClick={() => setQuantity(quantity + 1)}
-                className="px-4 py-2 border-l border-gray-300"
+                className="w-10 h-10 flex items-center justify-center rounded-full border border-gray-300 bg-white text-gray-700 text-2xl font-bold hover:bg-gray-100 transition"
+                aria-label="Increase quantity"
               >
                 +
               </button>
@@ -439,7 +434,7 @@ function ProductDetail() {
                 </div>
                 <h3 className="mt-4 text-sm text-gray-700">{relatedProduct.name}</h3>
                 <p className="mt-1 text-lg font-medium text-gray-900">
-                  ${typeof relatedProduct.price === 'number' ? relatedProduct.price.toFixed(2) : parseFloat(relatedProduct.price || 0).toFixed(2)}
+                  {typeof relatedProduct.price === 'number' ? relatedProduct.price.toFixed(2) : parseFloat(relatedProduct.price || 0).toFixed(2)} MAD
                 </p>
               </Link>
             ))}

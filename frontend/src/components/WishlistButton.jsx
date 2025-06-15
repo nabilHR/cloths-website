@@ -1,103 +1,148 @@
-import React, { useState, useEffect } from 'react';
-import { showToast } from '../utils/toast';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useAuth } from '../context/AuthContext'; // Assuming you have AuthContext
+import { HeartIcon as HeartOutline } from '@heroicons/react/24/outline';
+import { HeartIcon as HeartSolid } from '@heroicons/react/24/solid';
+import { toast } from 'react-hot-toast'; // Or your preferred toast library
 
-function WishlistButton({ productId }) {
-  const [isInWishlist, setIsInWishlist] = useState(false);
+function WishlistButton({ productId, initialIsInWishlist, onToggle }) {
+  const { isAuthenticated, user } = useAuth();
+  const [isInWishlist, setIsInWishlist] = useState(initialIsInWishlist || false);
+  const [wishlistItemId, setWishlistItemId] = useState(null);
   const [loading, setLoading] = useState(false);
-  
-  useEffect(() => {
-    // Check if product is in wishlist
-    const checkWishlist = async () => {
-      const token = localStorage.getItem('authToken');
-      if (!token) return;
-      
-      try {
-        const response = await fetch(`http://localhost:8000/api/wishlist/check/${productId}/`, {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        });
-        
-        if (response.ok) {
-          const data = await response.json();
-          setIsInWishlist(data.in_wishlist);
-        }
-      } catch (err) {
-        console.error('Error checking wishlist:', err);
-      }
-    };
-    
-    checkWishlist();
-  }, [productId]);
-  
-  const toggleWishlist = async () => {
-    const token = localStorage.getItem('authToken');
-    if (!token) {
-      showToast.error('Please login to add items to your wishlist');
+
+  const fetchWishlistStatus = useCallback(async () => {
+    if (!isAuthenticated || !productId || !user) {
+      setIsInWishlist(false);
+      setWishlistItemId(null);
       return;
     }
-    
     setLoading(true);
-    const toastId = showToast.loading('Updating wishlist...');
-    
     try {
-      const method = isInWishlist ? 'DELETE' : 'POST';
-      const url = isInWishlist 
-        ? `http://localhost:8000/api/wishlist/${productId}/`
-        : 'http://localhost:8000/api/wishlist/';
-      
-      const response = await fetch(url, {
-        method,
+      const token = localStorage.getItem('authToken');
+      const response = await fetch(`http://localhost:8000/api/wishlist/check/${productId}/`, {
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          'Authorization': `Token ${token}`,
         },
-        body: isInWishlist ? null : JSON.stringify({ product: productId })
       });
-      
       if (response.ok) {
-        setIsInWishlist(!isInWishlist);
-        showToast.dismiss(toastId);
-        showToast.success(isInWishlist ? 'Removed from wishlist' : 'Added to wishlist');
+        const data = await response.json();
+        setIsInWishlist(data.in_wishlist);
+        setWishlistItemId(data.in_wishlist ? data.wishlist_item_id : null);
+      } else if (response.status === 404 && (await response.json()).detail === "Product not found.") {
+        // Product might have been deleted, handle gracefully
+        setIsInWishlist(false);
+        setWishlistItemId(null);
+         console.warn(`Wishlist check: Product ID ${productId} not found on backend.`);
       } else {
-        throw new Error('Failed to update wishlist');
+        console.error('Failed to fetch wishlist status:', response.status);
+        // setIsInWishlist(false); // Optionally reset on error
+        // setWishlistItemId(null);
       }
-    } catch (err) {
-      console.error('Error toggling wishlist:', err);
-      showToast.dismiss(toastId);
-      showToast.error('Failed to update wishlist');
+    } catch (error) {
+      console.error('Error fetching wishlist status:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [productId, isAuthenticated, user]);
+
+  useEffect(() => {
+    fetchWishlistStatus();
+  }, [fetchWishlistStatus]);
+
+
+  const handleToggleWishlist = async () => {
+    if (!isAuthenticated) {
+      toast.error('Please log in to manage your wishlist.');
+      // Consider redirecting to login: history.push('/login');
+      return;
+    }
+    if (loading) return;
+
+    setLoading(true);
+    const token = localStorage.getItem('authToken');
+    let currentWishlistItemId = wishlistItemId;
+
+    // If not in wishlist, try to fetch status again to get wishlistItemId if it was added elsewhere
+    if (!isInWishlist && !currentWishlistItemId) {
+        try {
+            const checkResponse = await fetch(`http://localhost:8000/api/wishlist/check/${productId}/`, {
+                headers: { 'Authorization': `Token ${token}`},
+            });
+            if (checkResponse.ok) {
+                const data = await checkResponse.json();
+                if (data.in_wishlist) {
+                    currentWishlistItemId = data.wishlist_item_id;
+                }
+            }
+        } catch (error) {
+            console.error("Error re-checking wishlist status:", error);
+        }
+    }
+
+
+    try {
+      if (isInWishlist || currentWishlistItemId) { // If it is in wishlist or we found an ID
+        // Remove from wishlist
+        if (!currentWishlistItemId) {
+            toast.error("Could not remove item: ID missing.");
+            setLoading(false);
+            return;
+        }
+        const response = await fetch(`http://localhost:8000/api/wishlist/${currentWishlistItemId}/`, {
+          method: 'DELETE',
+          headers: {
+            'Authorization': `Token ${token}`,
+          },
+        });
+        if (response.ok) {
+          setIsInWishlist(false);
+          setWishlistItemId(null);
+          toast.success('Removed from wishlist!');
+          if (onToggle) onToggle(productId, false);
+        } else {
+          const errorData = await response.json();
+          toast.error(errorData.detail || 'Failed to remove from wishlist.');
+        }
+      } else {
+        // Add to wishlist
+        const response = await fetch('http://localhost:8000/api/wishlist/', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Token ${token}`,
+          },
+          body: JSON.stringify({ product_id: productId }),
+        });
+        if (response.status === 201 || response.status === 200) { // 200 if already exists and backend returns existing
+          const data = await response.json();
+          setIsInWishlist(true);
+          setWishlistItemId(data.id); // Assuming response contains the created/existing wishlist item with its ID
+          toast.success('Added to wishlist!');
+          if (onToggle) onToggle(productId, true);
+        } else {
+          const errorData = await response.json();
+          toast.error(errorData.detail || errorData.product_id || 'Failed to add to wishlist.');
+        }
+      }
+    } catch (error) {
+      console.error('Error toggling wishlist:', error);
+      toast.error('An error occurred. Please try again.');
     } finally {
       setLoading(false);
     }
   };
-  
+
+  const Icon = isInWishlist ? HeartSolid : HeartOutline;
+
   return (
     <button
-      onClick={toggleWishlist}
-      disabled={loading}
-      className="bg-white rounded-full p-2 shadow-md hover:bg-gray-50 transition-colors focus:outline-none"
-      aria-label={isInWishlist ? "Remove from wishlist" : "Add to wishlist"}
+      onClick={handleToggleWishlist}
+      disabled={loading || !productId}
+      className={`p-2 rounded-full transition-colors duration-200 ease-in-out focus:outline-none 
+                  ${isInWishlist ? 'text-red-500 bg-red-100 hover:bg-red-200' : 'text-gray-500 hover:text-red-500 hover:bg-red-100'}`}
+      aria-label={isInWishlist ? 'Remove from wishlist' : 'Add to wishlist'}
     >
-      {loading ? (
-        <svg className="h-6 w-6 text-gray-400 animate-spin" fill="none" viewBox="0 0 24 24">
-          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-        </svg>
-      ) : (
-        <svg
-          className={`h-6 w-6 ${isInWishlist ? 'text-red-500 fill-current' : 'text-gray-400'}`}
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth="2"
-            d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"
-          ></path>
-        </svg>
-      )}
+      <Icon className="w-5 h-5 sm:w-6 sm:h-6" />
     </button>
   );
 }

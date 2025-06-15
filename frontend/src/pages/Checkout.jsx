@@ -2,10 +2,22 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
 import { showToast } from '../utils/toast';
+import {loadStripe} from '@stripe/stripe-js';
+import {Elements, CardElement, useStripe, useElements} from '@stripe/react-stripe-js';
+
+// Initialize Stripe
+console.log("Stripe key:", import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY);
+const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY);
 
 function Checkout() {
   const { cartItems, clearCart, getTotalPrice } = useCart();
   const navigate = useNavigate();
+  const stripe = useStripe();
+  const elements = useElements();
+  
+  // Log if Stripe is loaded
+  console.log("Stripe loaded:", !!stripe);
+  console.log("Elements loaded:", !!elements);
   
   const [step, setStep] = useState(1); // 1: Shipping, 2: Payment, 3: Review
   const [loading, setLoading] = useState(false);
@@ -37,9 +49,20 @@ function Checkout() {
     const fetchAddresses = async () => {
       try {
         const token = localStorage.getItem('authToken');
+        
+        // Check if token exists
+        if (!token) {
+          console.error('No authentication token found');
+          showToast.error('Please log in to continue checkout');
+          navigate('/login');
+          return;
+        }
+        
+        console.log('Using auth token:', token);
+        
         const response = await fetch('http://localhost:8000/api/addresses/', {
           headers: {
-            'Authorization': `Bearer ${token}`
+            'Authorization': `Token ${token}`
           }
         });
         
@@ -112,14 +135,15 @@ function Checkout() {
     e.preventDefault();
     
     if (paymentMethod === 'credit_card') {
-      // Validate credit card details
-      if (
-        paymentFormData.cardNumber.replace(/\s/g, '').length !== 16 ||
-        !paymentFormData.cardHolder ||
-        !paymentFormData.expiryDate ||
-        !paymentFormData.cvv
-      ) {
-        showToast.error('Please enter valid payment details');
+      // Only validate cardHolder since CardElement handles the rest
+      if (!paymentFormData.cardHolder) {
+        showToast.error('Please enter cardholder name');
+        return;
+      }
+      
+      // Make sure Stripe is loaded and CardElement has been used
+      if (!stripe || !elements) {
+        showToast.error('Payment processing not available');
         return;
       }
     }
@@ -131,46 +155,77 @@ function Checkout() {
     setLoading(true);
     
     try {
-      const token = localStorage.getItem('authToken');
+      console.log("Starting order creation...");
       
-      // Prepare order data
+      // 1. Prepare order data with exact format backend expects
       const orderData = {
         items: cartItems.map(item => ({
-          product: item.id,
+          product_id: item.id, // <-- must be product_id
           quantity: item.quantity,
-          size: item.selectedSize,
-          color: item.selectedColor || null
+          size: item.selectedSize || '',
+          color: item.selectedColor || ''
         })),
         shipping_address: selectedAddressId || null,
-        shipping_address_data: !selectedAddressId ? shippingFormData : null,
-        payment_method: paymentMethod,
-        payment_details: paymentMethod === 'credit_card' ? {
-          last_four: paymentFormData.cardNumber.slice(-4)
-        } : null
+        shipping_address_data: !selectedAddressId ? {
+          full_name: shippingFormData.fullName,
+          address: shippingFormData.address,
+          city: shippingFormData.city,
+          state: shippingFormData.state,
+          zip_code: shippingFormData.zipCode,
+          country: shippingFormData.country,
+          phone: shippingFormData.phone
+        } : null,
       };
       
-      const response = await fetch('http://localhost:8000/api/orders/', {
+      console.log("Order payload:", JSON.stringify(orderData, null, 2));
+      
+      // 2. Create order
+      const orderResponse = await fetch('http://localhost:8000/api/orders/', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          'Authorization': `Token ${localStorage.getItem('authToken')}`
         },
         body: JSON.stringify(orderData)
       });
       
-      if (!response.ok) {
-        throw new Error(`Error ${response.status}: ${response.statusText}`);
+      console.log("Order response status:", orderResponse.status);
+      
+      // 3. Handle response
+      if (!orderResponse.ok) {
+        let errorText = 'Unknown error';
+        
+        const contentType = orderResponse.headers.get('content-type');
+        const responseClone = orderResponse.clone(); // Clone before reading
+        
+        try {
+          if (contentType && contentType.includes('application/json')) {
+            const errorJson = await orderResponse.json();
+            errorText = JSON.stringify(errorJson);
+            console.error("Order error JSON:", errorJson);
+          } else {
+            errorText = await responseClone.text();
+            console.error("Order error text:", errorText);
+          }
+        } catch (e) {
+          console.error("Error parsing response:", e);
+          // Don't try to read the body again
+        }
+        
+        throw new Error(`Order creation failed: ${errorText}`);
       }
       
-      const data = await response.json();
+      const createdOrder = await orderResponse.json();
+      console.log("Order created successfully:", createdOrder);
       
-      // Clear cart and redirect to success page
+      // Skip payment for now and just complete the order
+      showToast.success("Order created successfully!");
       clearCart();
-      navigate(`/order-confirmation/${data.id}`);
-      showToast.success('Order placed successfully!');
+      navigate('/order-success');
+      
     } catch (err) {
-      console.error('Error placing order:', err);
-      showToast.error('Failed to place order. Please try again.');
+      console.error('Order creation error:', err);
+      showToast.error(err.message || 'Order creation failed');
     } finally {
       setLoading(false);
     }
@@ -191,6 +246,18 @@ function Checkout() {
     } else {
       return value;
     }
+  };
+  
+  // Calculate total price
+  const calculateTotalPrice = () => {
+    return cartItems.reduce((total, item) => {
+      return total + (parseFloat(item.price) || 0) * item.quantity;
+    }, 0);
+  };
+  
+  const getItemPrice = (item) => {
+    const price = parseFloat(item.price);
+    return isNaN(price) ? 0 : price;
   };
   
   // Render different steps
@@ -416,25 +483,6 @@ function Checkout() {
             <form onSubmit={handlePaymentSubmit} className="ml-6 p-4 border border-gray-200 rounded-md">
               <div className="space-y-4">
                 <div>
-                  <label htmlFor="cardNumber" className="block text-sm font-medium text-gray-700 mb-1">
-                    Card Number
-                  </label>
-                  <input
-                    id="cardNumber"
-                    name="cardNumber"
-                    type="text"
-                    maxLength="19"
-                    placeholder="1234 5678 9012 3456"
-                    value={paymentFormData.cardNumber}
-                    onChange={(e) => {
-                      const formatted = formatCardNumber(e.target.value);
-                      setPaymentFormData(prev => ({ ...prev, cardNumber: formatted }));
-                    }}
-                    className="w-full rounded-md border-gray-300 shadow-sm focus:border-black focus:ring-black"
-                  />
-                </div>
-                
-                <div>
                   <label htmlFor="cardHolder" className="block text-sm font-medium text-gray-700 mb-1">
                     Cardholder Name
                   </label>
@@ -449,46 +497,32 @@ function Checkout() {
                   />
                 </div>
                 
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label htmlFor="expiryDate" className="block text-sm font-medium text-gray-700 mb-1">
-                      Expiry Date
-                    </label>
-                    <input
-                      id="expiryDate"
-                      name="expiryDate"
-                      type="text"
-                      placeholder="MM/YY"
-                      maxLength="5"
-                      value={paymentFormData.expiryDate}
-                      onChange={(e) => {
-                        let value = e.target.value.replace(/[^\d]/g, '');
-                        if (value.length > 2) {
-                          value = value.slice(0, 2) + '/' + value.slice(2);
-                        }
-                        setPaymentFormData(prev => ({ ...prev, expiryDate: value }));
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Card Details
+                  </label>
+                  <div className="p-4 border border-gray-300 rounded-md bg-white" style={{ minHeight: '70px' }}>
+                    <CardElement 
+                      options={{
+                        style: {
+                          base: {
+                            fontSize: '16px',
+                            color: '#424770',
+                            '::placeholder': {
+                              color: '#aab7c4',
+                            },
+                            padding: '12px 0',
+                          },
+                          invalid: {
+                            color: '#9e2146',
+                          },
+                        },
+                        hidePostalCode: true
                       }}
-                      className="w-full rounded-md border-gray-300 shadow-sm focus:border-black focus:ring-black"
                     />
                   </div>
-                  
-                  <div>
-                    <label htmlFor="cvv" className="block text-sm font-medium text-gray-700 mb-1">
-                      CVV
-                    </label>
-                    <input
-                      id="cvv"
-                      name="cvv"
-                      type="text"
-                      placeholder="123"
-                      maxLength="4"
-                      value={paymentFormData.cvv}
-                      onChange={(e) => {
-                        const value = e.target.value.replace(/[^\d]/g, '');
-                        setPaymentFormData(prev => ({ ...prev, cvv: value }));
-                      }}
-                      className="w-full rounded-md border-gray-300 shadow-sm focus:border-black focus:ring-black"
-                    />
+                  <div className="mt-2 text-sm text-gray-600">
+                    Test card: 4242 4242 4242 4242 | Any future date | Any 3 digits for CVC
                   </div>
                 </div>
               </div>
@@ -573,7 +607,7 @@ function Checkout() {
                   <div className="flex items-center">
                     <div className="h-10 w-10 flex-shrink-0">
                       <img 
-                        src={item.image || 'https://via.placeholder.com/100x100'} 
+                        src={item.image || 'https://placehold.co/100x100'} 
                         alt={item.name}
                         className="h-10 w-10 object-cover"
                       />
@@ -590,13 +624,13 @@ function Checkout() {
                   </div>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm text-gray-500">
-                  ${item.price}
+                  ${getItemPrice(item).toFixed(2)}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm text-gray-500">
                   {item.quantity}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                  ${(item.price * item.quantity).toFixed(2)}
+                  ${(getItemPrice(item) * item.quantity).toFixed(2)}
                 </td>
               </tr>
             ))}
@@ -611,7 +645,7 @@ function Checkout() {
         <div className="space-y-2 mb-4">
           <div className="flex justify-between">
             <span>Subtotal</span>
-            <span>${getTotalPrice().toFixed(2)}</span>
+            <span>${calculateTotalPrice().toFixed(2)}</span>
           </div>
           <div className="flex justify-between">
             <span>Shipping</span>
@@ -619,13 +653,13 @@ function Checkout() {
           </div>
           <div className="flex justify-between">
             <span>Tax</span>
-            <span>${(getTotalPrice() * 0.1).toFixed(2)}</span>
+            <span>${(calculateTotalPrice() * 0.1).toFixed(2)}</span>
           </div>
         </div>
         
         <div className="border-t border-gray-200 pt-4 flex justify-between font-medium">
           <span>Total</span>
-          <span>${(getTotalPrice() * 1.1).toFixed(2)}</span>
+          <span>${(calculateTotalPrice() * 1.1).toFixed(2)}</span>
         </div>
       </div>
       
@@ -671,8 +705,8 @@ function Checkout() {
           {paymentMethod === 'credit_card' ? (
             <div>
               <p>Credit Card</p>
-              <p>Card ending in {paymentFormData.cardNumber.slice(-4)}</p>
-              <p>Expires {paymentFormData.expiryDate}</p>
+              <p>Card details provided via Stripe</p>
+              <p>Cardholder: {paymentFormData.cardHolder}</p>
             </div>
           ) : (
             <div>
@@ -783,4 +817,12 @@ function Checkout() {
   );
 }
 
-export default Checkout;
+function CheckoutWithStripe() {
+  return (
+    <Elements stripe={stripePromise}>
+      <Checkout />
+    </Elements>
+  );
+}
+
+export default CheckoutWithStripe;

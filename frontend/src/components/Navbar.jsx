@@ -15,6 +15,7 @@ function Navbar() {
   const [showSearch, setShowSearch] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const navigate = useNavigate();
   
   // Calculate total items in cart
@@ -107,7 +108,7 @@ function Navbar() {
       <header className="bg-white shadow-sm fixed top-0 left-0 right-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16 items-center">
-            {/* Left side: Menu button and Logo */}
+            {/* Left side: Menu button, Stylist, and Logo */}
             <div className="flex items-center">
               <button
                 onClick={() => setIsMenuOpen(!isMenuOpen)}
@@ -128,9 +129,20 @@ function Navbar() {
                   ></path>
                 </svg>
               </button>
-              
-              <Link to="/" className="font-bold text-xl">
-                STORE
+
+              {/* Fancy Stylist text, clickable */}
+              <Link
+                to="/"
+                className="font-serif italic font-bold text-2xl text-yellow-400 select-none hover:underline flex items-center"
+                style={{ textDecorationThickness: '2px' }}
+              >
+                Stylist
+                <img
+                  src="/logo/logo.png"
+                  alt="Logo"
+                  className="w-36 h-auto object-contain ml-2"
+                  style={{ maxHeight: '7.5rem' }}
+                />
               </Link>
             </div>
             
@@ -196,16 +208,20 @@ function Navbar() {
                   {/* Profile dropdown */}
                   {showProfileMenu && (
                     <div className="origin-top-right absolute right-0 mt-2 w-48 rounded-md shadow-lg py-1 bg-white ring-1 ring-black ring-opacity-5 focus:outline-none z-50">
-                      <Link to="/account" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                      <Link to="/account" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                        onClick={() => setShowProfileMenu(false)}>
                         Dashboard
                       </Link>
-                      <Link to="/profile" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                      <Link to="/profile" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                        onClick={() => setShowProfileMenu(false)}>
                         Your Profile
                       </Link>
-                      <Link to="/order-history" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                      <Link to="/order-history" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                        onClick={() => setShowProfileMenu(false)}>
                         Orders
                       </Link>
-                      <Link to="/wishlist" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                      <Link to="/wishlist" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                        onClick={() => setShowProfileMenu(false)}>
                         Wishlist
                       </Link>
                       <button

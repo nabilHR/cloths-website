@@ -1,5 +1,6 @@
 from django.db import models
 from django.contrib.auth.models import User
+from django.conf import settings # For User model
 
 class Category(models.Model):
     name = models.CharField(max_length=100)
@@ -93,14 +94,18 @@ class Order(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     
     # New fields for checkout
-    shipping_address = models.CharField(max_length=255, blank=True)
-    shipping_city = models.CharField(max_length=100, blank=True)
-    shipping_postal_code = models.CharField(max_length=20, blank=True)
-    shipping_country = models.CharField(max_length=100, blank=True)
-    payment_method = models.CharField(max_length=50, blank=True)
-    payment_details = models.JSONField(default=dict, blank=True)
+    shipping_address = models.CharField(max_length=255, blank=True, null=True)
+    shipping_city = models.CharField(max_length=100, blank=True, null=True)
+    shipping_postal_code = models.CharField(max_length=20, blank=True, null=True)
+    shipping_country = models.CharField(max_length=100, blank=True, null=True)
+    payment_method = models.CharField(max_length=50, default='credit_card', choices=[
+        ('credit_card', 'Credit Card'),
+        ('paypal', 'PayPal'),
+    ])
+    payment_details = models.JSONField(default=dict, blank=True, null=True)
     subtotal = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     shipping_cost = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    tax = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     total = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     
     def __str__(self):
@@ -113,11 +118,13 @@ class Order(models.Model):
 class OrderItem(models.Model):
     order = models.ForeignKey(Order, related_name='items', on_delete=models.CASCADE)
     product = models.ForeignKey(Product, on_delete=models.CASCADE)
-    quantity = models.PositiveIntegerField(default=1)
-    size = models.CharField(max_length=10, default='M')
-    
+    quantity = models.PositiveIntegerField()
+    size = models.CharField(max_length=20, blank=True)
+    color = models.CharField(max_length=30, blank=True)
+    price = models.DecimalField(max_digits=10, decimal_places=2, default=0)  # <-- Set default=0
+
     def __str__(self):
-        return f"{self.quantity} x {self.product.name}"
+        return f"{self.product.name} x {self.quantity}"
     
     @property
     def total_price(self):
@@ -174,13 +181,16 @@ class ShippingAddress(models.Model):
 
 # Create a Wishlist model in models.py
 class WishlistItem(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='wishlist_items')
-    product = models.ForeignKey(Product, on_delete=models.CASCADE)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='wishlist_items')
+    product = models.ForeignKey('Product', on_delete=models.CASCADE) # Assuming Product model is in the same app
     added_at = models.DateTimeField(auto_now_add=True)
-    
+
     class Meta:
-        unique_together = ('user', 'product')
+        unique_together = ('user', 'product') # A user can add a product to wishlist only once
         ordering = ['-added_at']
+
+    def __str__(self):
+        return f"{self.user.username}'s wishlist: {self.product.name}"
 
 class UserProfile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')

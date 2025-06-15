@@ -3,41 +3,8 @@ import { useParams, useLocation } from 'react-router-dom';
 import ProductCard from '../components/ProductCard';
 import FilterBar from '../components/FilterBar';
 
-// Define CategoryDebugger as a separate component OUTSIDE the main component
-function CategoryDebugger() {
-  const [categories, setCategories] = useState([]);
-  
-  useEffect(() => {
-    fetch('http://localhost:8000/api/categories/')
-      .then(res => res.json())
-      .then(data => {
-        if (data.results) {
-          setCategories(data.results);
-        } else if (Array.isArray(data)) {
-          setCategories(data);
-        }
-      });
-  }, []);
-  
-  return (
-    <div className="bg-gray-100 p-4 rounded-md mb-4">
-      <h3 className="font-bold">Available Categories:</h3>
-      <ul>
-        {categories.map(cat => (
-          <li key={cat.id}>
-            <strong>ID:</strong> {cat.id}, 
-            <strong>Name:</strong> {cat.name}, 
-            <strong>Slug:</strong> {cat.slug}
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
 function CategoryPage() {
   const { slug } = useParams();
-  console.log("CategoryPage mounted with slug:", slug);
   const location = useLocation();
   const queryParams = new URLSearchParams(location.search);
   
@@ -51,21 +18,16 @@ function CategoryPage() {
   const [selectedCategory, setSelectedCategory] = useState('');
   const [categories, setCategories] = useState([]);
   
-  // This is the critical part - fetch products when URL params change
+  // Fetch products when URL params change
   useEffect(() => {
     const fetchCategoryProducts = async () => {
       setLoading(true);
       setError(null);
       
       try {
-        // Log the current slug for debugging
-        console.log("Fetching category with slug:", slug);
-        
-        // First, fetch the category info based on slug
+        // Fetch the category info based on slug
         const categoryResponse = await fetch(`http://localhost:8000/api/categories/?slug=${slug}`);
         const categoryData = await categoryResponse.json();
-        
-        console.log("Category data from API:", categoryData);
         
         // Check if we have results and it's an array or paginated results
         let foundCategory;
@@ -87,9 +49,7 @@ function CategoryPage() {
         // Ensure we have a valid category ID before setting it
         if (foundCategory && foundCategory.id) {
           apiParams.set('category', foundCategory.id.toString());
-          console.log(`Fetching products with category ID: ${foundCategory.id}`);
         } else {
-          console.error("No valid category ID found");
           throw new Error("Category ID not found");
         }
         
@@ -100,30 +60,17 @@ function CategoryPage() {
           }
         }
         
-        console.log('Fetching products with params:', Object.fromEntries(apiParams));
-        
         // Fetch filtered products
         const productsUrl = `http://localhost:8000/api/products/?${apiParams.toString()}`;
         const productsResponse = await fetch(productsUrl);
         
         if (!productsResponse.ok) {
-          const errorText = await productsResponse.text();
-          console.error('Server response:', errorText);
           throw new Error(`Failed to fetch products: ${productsResponse.status} ${productsResponse.statusText}`);
         }
         
         const productsData = await productsResponse.json();
-        console.log(`Category ID: ${foundCategory.id}, Products returned:`, productsData);
-        
-        // Log each product's category to verify
-        if (Array.isArray(productsData)) {
-          console.log("Product categories in response:", 
-            productsData.map(p => ({id: p.id, name: p.name, category: p.category})));
-        }
-
         setProducts(productsData.results || productsData || []);
       } catch (err) {
-        console.error('Error details:', err);
         setError(err.message);
       } finally {
         setLoading(false);
@@ -133,31 +80,8 @@ function CategoryPage() {
     fetchCategoryProducts();
   }, [slug, location.search]); // React to URL changes
 
-  // Debugging: Log raw and parsed URL parameters
-  useEffect(() => {
-    console.log("Raw slug:", slug);
-    console.log("Raw query params:", location.search);
-    console.log("Parsed query params:", Object.fromEntries(queryParams.entries()));
-  }, [slug, location.search]);
-
   const handleFilterChange = (filters) => {
-    console.log('Filters changed:', filters);
-  };
-
-  const testDirectApi = async () => {
-    try {
-      const testUrl = `http://localhost:8000/api/products/?category=${category?.id}&min_price=10&max_price=50`;
-      console.log("Testing direct API call:", testUrl);
-      
-      const response = await fetch(testUrl);
-      const data = await response.json();
-      console.log(`Direct API test returned ${data.length} products`);
-      
-      // Update products directly
-      setProducts(data);
-    } catch (err) {
-      console.error("Direct API test failed:", err);
-    }
+    // Handle filter changes
   };
 
   // Reset filters
@@ -194,22 +118,17 @@ function CategoryPage() {
     );
   }
 
-  // Extract gender from category name
-  const gender = category?.name?.startsWith("Men's") 
-    ? "Men" 
-    : category?.name?.startsWith("Women's") 
-      ? "Women" 
-      : "Kids";
-  
-  // Clean category name (remove gender prefix)
-  const cleanCategoryName = category?.name?.replace(/^(Men's|Women's|Kids') /, '');
+  // Simply use the category name directly
+  const gender = category?.name || '';
+
+  // No need for a separate cleaned name since our categories are already simple
+  const cleanCategoryName = '';
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-8">
-      {/* Category header - Zara style */}
+      {/* Category header - Simplified */}
       <div className="mb-12 text-center">
-        <h2 className="text-sm uppercase tracking-wider mb-1">{gender}</h2>
-        <h1 className="text-2xl font-light">{cleanCategoryName}</h1>
+        <h1 className="text-2xl font-medium">{category?.name || 'Products'}</h1>
       </div>
       
       {/* Main content with filters sidebar */}
@@ -274,30 +193,6 @@ function CategoryPage() {
             )}
           </div>
           
-          <button 
-            onClick={testDirectApi}
-            className="px-4 py-2 bg-black text-white mb-4"
-          >
-            Test Price Filter (10-50)
-          </button>
-          
-          <button 
-            onClick={() => {
-              const catId = category?.id;
-              fetch(`http://localhost:8000/api/products/?category=${catId}`)
-                .then(res => res.json())
-                .then(data => {
-                  console.log(`Direct API call with category=${catId} returned:`, data);
-                  console.log("Products by category:", 
-                    data.map(p => ({id: p.id, name: p.name, category: p.category})));
-                })
-                .catch(err => console.error("API test failed:", err));
-            }}
-            className="px-4 py-2 bg-black text-white mb-4 mr-2"
-          >
-            Test Current Category Filter
-          </button>
-          
           {products.length === 0 ? (
             <div className="text-center py-12">
               <p className="text-gray-500">No products found in this category.</p>
@@ -338,36 +233,6 @@ function CategoryPage() {
           )}
         </div>
       </div>
-
-      {/* Debug info - show only in development */}
-      {import.meta.env.DEV && (
-        <div className="bg-gray-100 p-4 mb-4 rounded">
-          <h3 className="font-bold">Category Debug Info:</h3>
-          <p>Category ID: {category?.id}</p>
-          <p>Category Name: {category?.name || 'Unknown'}</p>
-          <p>Total Products: {products.length}</p>
-          <p>Products with different category: {
-            products.filter(p => p.category != category?.id).length
-          }</p>
-          <button 
-            onClick={() => {
-              const categoryId = category?.id;
-              console.log("Products with wrong category:", 
-                products.filter(p => p.category != categoryId).map(p => ({
-                  id: p.id, 
-                  name: p.name, 
-                  correctCategory: categoryId,
-                  actualCategory: p.category,
-                  categoryName: p.category_name
-                }))
-              );
-            }}
-            className="bg-blue-500 text-white px-3 py-1 rounded mt-2"
-          >
-            Log Mismatched Products
-          </button>
-        </div>
-      )}
     </div>
   );
 }

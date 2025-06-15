@@ -270,35 +270,6 @@ function FilterBar() {
             </div>
           </div>
           
-          {/* Categories */}
-          <div className="mb-4">
-            <h3 className="font-light text-xs uppercase tracking-wider mb-4">Categories</h3>
-            <div className="max-h-60 overflow-y-auto space-y-3 pr-2 custom-scrollbar">
-              {categories && Array.isArray(categories) ? (
-                categories.map(category => (
-                  <div key={category.id} className="flex items-center">
-                    <input
-                      type="radio"
-                      id={`category-${category.id}`}
-                      name="category"
-                      checked={selectedCategory === category.id.toString()}
-                      onChange={() => setSelectedCategory(category.id.toString())}
-                      className="form-radio h-4 w-4 text-black border-gray-300 focus:ring-0 cursor-pointer"
-                    />
-                    <label 
-                      htmlFor={`category-${category.id}`} 
-                      className="ml-2 text-sm text-gray-700 cursor-pointer hover:text-black transition-colors duration-200"
-                    >
-                      {category.name}
-                    </label>
-                  </div>
-                ))
-              ) : (
-                <p className="text-gray-500">No categories available</p>
-              )}
-            </div>
-          </div>
-          
           {/* Colors */}
           <div className="mb-8 pb-8 border-b border-gray-100">
             <h3 className="font-light text-xs uppercase tracking-wider mb-4">Colors</h3>

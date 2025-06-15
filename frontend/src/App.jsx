@@ -1,6 +1,8 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
+import { loadStripe } from '@stripe/stripe-js';
+import { Elements } from '@stripe/react-stripe-js';
 
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
@@ -22,11 +24,14 @@ import WishlistPage from './pages/WishlistPage';
 import AccountDashboard from './pages/AccountDashboard';
 import ProfileEdit from './pages/ProfileEdit';
 import ProductManagement from './pages/ProductManagement';
+import ProductEditPage from './pages/admin/ProductEditPage';
 
 import ProtectedRoute from './components/ProtectedRoute';
 import ErrorBoundary from './components/ErrorBoundary';
 import { AuthProvider } from './context/AuthContext';
 import { CartProvider } from './context/CartContext';
+
+const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY);
 
 function App() {
   return (
@@ -61,7 +66,11 @@ function App() {
                     path="/checkout" 
                     element={
                       <ProtectedRoute>
-                        <ErrorBoundary><Checkout /></ErrorBoundary>
+                        <ErrorBoundary>
+                          <Elements stripe={stripePromise}>
+                            <Checkout />
+                          </Elements>
+                        </ErrorBoundary>
                       </ProtectedRoute>
                     } 
                   />
@@ -138,6 +147,14 @@ function App() {
                       </ProtectedRoute>
                     } 
                   />
+                  <Route 
+                    path="/admin/products/:productId/edit" 
+                    element={
+                      <ProtectedRoute> {/* Add ProtectedRoute */}
+                        <ErrorBoundary><ProductEditPage /></ErrorBoundary> {/* Add ErrorBoundary */}
+                      </ProtectedRoute>
+                    } 
+                  /> 
                 </Routes>
               </main>
               <Footer />

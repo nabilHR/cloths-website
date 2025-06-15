@@ -88,7 +88,7 @@ function WishlistPage() {
               <Link to={`/products/${item.product.id}`}>
                 <div className="aspect-w-3 aspect-h-4 relative">
                   <img 
-                    src={item.product.image} 
+                    src={item.image || 'https://placehold.co/300x400'}
                     alt={item.product.name}
                     className="w-full h-full object-cover"
                   />

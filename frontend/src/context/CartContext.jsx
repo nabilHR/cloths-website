@@ -1,22 +1,16 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
 
 // Create the context
-const CartContext = createContext();
+export const CartContext = createContext();
 
 // Create a provider component
 export function CartProvider({ children }) {
-  const [cartItems, setCartItems] = useState([]);
-  const [totalItems, setTotalItems] = useState(0);
-
-  // Load cart from localStorage on initial render
-  useEffect(() => {
+  // Initialize state from localStorage
+  const [cartItems, setCartItems] = useState(() => {
     const savedCart = localStorage.getItem('cart');
-    if (savedCart) {
-      const parsedCart = JSON.parse(savedCart);
-      setCartItems(parsedCart);
-      calculateTotal(parsedCart);
-    }
-  }, []);
+    return savedCart ? JSON.parse(savedCart) : [];
+  });
+  const [totalItems, setTotalItems] = useState(0);
 
   // Save to localStorage whenever cart changes
   useEffect(() => {
@@ -32,22 +26,25 @@ export function CartProvider({ children }) {
 
   // Add item to cart
   const addToCart = (product) => {
-    // Generate a unique key that includes size and color
-    const itemKey = `${product.id}${product.selectedSize ? `-${product.selectedSize}` : ''}${product.selectedColor ? `-${product.selectedColor}` : ''}`;
-    
-    // Check if this exact combination already exists in cart
+    // Normalize property names
+    const normalizedProduct = {
+      ...product,
+      size: product.selectedSize || '',
+      color: product.selectedColor || '',
+    };
+
+    const itemKey = `${normalizedProduct.id}${normalizedProduct.size ? `-${normalizedProduct.size}` : ''}${normalizedProduct.color ? `-${normalizedProduct.color}` : ''}`;
+
     const existingItemIndex = cartItems.findIndex(
-      item => `${item.id}${item.selectedSize ? `-${item.selectedSize}` : ''}${item.selectedColor ? `-${item.selectedColor}` : ''}` === itemKey
+      item => `${item.id}${item.size ? `-${item.size}` : ''}${item.color ? `-${item.color}` : ''}` === itemKey
     );
 
     if (existingItemIndex >= 0) {
-      // Update quantity of existing item
       const updatedItems = [...cartItems];
-      updatedItems[existingItemIndex].quantity += product.quantity;
+      updatedItems[existingItemIndex].quantity += normalizedProduct.quantity;
       setCartItems(updatedItems);
     } else {
-      // Add new item
-      setCartItems([...cartItems, {...product}]);
+      setCartItems([...cartItems, { ...normalizedProduct }]);
     }
   };
 
@@ -81,6 +78,13 @@ export function CartProvider({ children }) {
     return cartItems.reduce((total, item) => total + (item.price * item.quantity), 0);
   };
 
+  // Calculate total price
+  const getTotalPrice = () => {
+    return cartItems.reduce((total, item) => {
+      return total + (parseFloat(item.price) || 0) * item.quantity;
+    }, 0);
+  };
+
   return (
     <CartContext.Provider value={{
       cartItems,
@@ -89,7 +93,8 @@ export function CartProvider({ children }) {
       removeFromCart,
       updateQuantity,
       clearCart,
-      getSubtotal
+      getSubtotal,
+      getTotalPrice
     }}>
       {children}
     </CartContext.Provider>
@@ -98,5 +103,32 @@ export function CartProvider({ children }) {
 
 // Custom hook to use the cart context
 export function useCart() {
-  return useContext(CartContext);
+  const context = useContext(CartContext);
+
+  if (!context) {
+    throw new Error('useCart must be used within a CartProvider');
+  }
+
+  // Destructure updateQuantity from context!
+  const { cartItems, addToCart, removeFromCart, clearCart, updateQuantity } = context;
+
+  return {
+    cartItems,
+    addToCart,
+    removeFromCart,
+    clearCart,
+    updateQuantity, // <-- use this in your Cart page
+  };
 }
+
+// Example usage in Cart.jsx
+/*
+<button onClick={() => updateQuantity(item.id, item.size, item.quantity - 1)}>-</button>
+<input
+  type="number"
+  min="1"
+  value={item.quantity}
+  onChange={e => updateQuantity(item.id, item.size, parseInt(e.target.value, 10))}
+/>
+<button onClick={() => updateQuantity(item.id, item.size, item.quantity + 1)}>+</button>
+*/

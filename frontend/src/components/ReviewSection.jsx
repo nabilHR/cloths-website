@@ -6,7 +6,7 @@ function ReviewSection({ productId, isLoggedIn }) {
   const [reviews, setReviews] = useState([]);  // Initialize as empty array
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [newReview, setNewReview] = useState({ rating: 5, comment: '' });
+  const [newReview, setNewReview] = useState({ rating: 5, title: '', comment: '' });
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -56,8 +56,16 @@ function ReviewSection({ productId, isLoggedIn }) {
   const handleSubmitReview = async (e) => {
     e.preventDefault();
     
-    if (!isLoggedIn) {
-      showToast.error('Please login to submit a review');
+    // Check authentication before attempting to submit
+    const token = localStorage.getItem('authToken');
+    if (!token) {
+      showToast.error('Please log in to submit a review');
+      return;
+    }
+    
+    // Validate inputs
+    if (!newReview.title.trim()) {
+      showToast.error('Please enter a review title');
       return;
     }
     
@@ -66,42 +74,81 @@ function ReviewSection({ productId, isLoggedIn }) {
       return;
     }
     
+    if (!productId || isNaN(parseInt(productId, 10))) {
+      showToast.error('Invalid product ID');
+      return;
+    }
+    
     setSubmitting(true);
     const toastId = showToast.loading('Submitting your review...');
     
     try {
-      const token = localStorage.getItem('authToken');
+      // Ensure all required fields are included
+      const reviewData = {
+        product: parseInt(productId, 10),
+        rating: parseInt(newReview.rating, 10),
+        title: newReview.title.trim(),
+        content: newReview.comment.trim()
+      };
+
+      console.log('Sending review data:', reviewData);
+
       const response = await fetch('http://localhost:8000/api/reviews/', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          'Authorization': `Token ${token}`
         },
-        body: JSON.stringify({
-          product: productId,
-          rating: newReview.rating,
-          comment: newReview.comment
-        })
+        body: JSON.stringify(reviewData)
       });
       
-      if (!response.ok) {
-        throw new Error(`Error ${response.status}: ${response.statusText}`);
+      // Get the response content first as text
+      const responseText = await response.text();
+      console.log('Raw response:', responseText);
+      
+      // Try to parse as JSON if possible
+      let responseData;
+      try {
+        responseData = JSON.parse(responseText);
+        console.log('Response data:', responseData);
+      } catch (e) {
+        console.log('Response is not JSON');
       }
       
-      const data = await response.json();
+      if (!response.ok) {
+        // Use the parsed JSON error if available
+        if (responseData) {
+          const errorMessage = Object.entries(responseData)
+            .map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join(', ') : value}`)
+            .join('; ');
+          throw new Error(`Error (${response.status}): ${errorMessage}`);
+        } else {
+          throw new Error(`Error ${response.status}: ${response.statusText}`);
+        }
+      }
+      
+      // Success - use the parsed data if available
+      const data = responseData || { 
+        id: Date.now(), 
+        rating: reviewData.rating,
+        title: reviewData.title,
+        content: reviewData.content,
+        created_at: new Date().toISOString(),
+        user_name: 'You'
+      };
       
       // Add the new review to the list
       setReviews(prev => [data, ...prev]);
       
       // Reset the form
-      setNewReview({ rating: 5, comment: '' });
+      setNewReview({ rating: 5, title: '', comment: '' });
       
       showToast.dismiss(toastId);
       showToast.success('Review submitted successfully!');
     } catch (err) {
       console.error('Error submitting review:', err);
       showToast.dismiss(toastId);
-      showToast.error('Failed to submit review');
+      showToast.error(err.message || 'Failed to submit review. Please try again.');
     } finally {
       setSubmitting(false);
     }
@@ -131,6 +178,20 @@ function ReviewSection({ productId, isLoggedIn }) {
                   </button>
                 ))}
               </div>
+            </div>
+            
+            {/* Review Title - New field added */}
+            <div className="mb-4">
+              <label htmlFor="title" className="block text-gray-700 mb-2">Review Title</label>
+              <input
+                type="text"
+                id="title"
+                name="title"
+                value={newReview.title}
+                onChange={handleInputChange}
+                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent"
+                placeholder="Summarize your review in a short title"
+              />
             </div>
             
             {/* Review Comment */}
@@ -186,8 +247,9 @@ function ReviewSection({ productId, isLoggedIn }) {
                   {new Date(review.created_at).toLocaleDateString()}
                 </span>
               </div>
+              <p className="text-sm font-bold mb-1">{review.title}</p>
               <p className="text-sm font-medium mb-1">{review.user_name || 'Anonymous'}</p>
-              <p className="text-gray-700">{review.comment}</p>
+              <p className="text-gray-700">{review.content || review.comment}</p>
             </div>
           ))}
         </div>
@@ -201,6 +263,8 @@ function ReviewSection({ productId, isLoggedIn }) {
           )}
         </div>
       )}
+      
+     
     </div>
   );
 }

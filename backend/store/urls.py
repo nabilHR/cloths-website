@@ -27,9 +27,17 @@ router.register(r'addresses', AddressViewSet, basename='address')
 router.register(r'reviews/my-reviews', UserReviewViewSet, basename='user-review')
 router.register(r'subcategories', views.SubCategoryViewSet, basename='subcategory')
 
+# Explicitly add the search routes
+product_search = ProductViewSet.as_view({'get': 'search'})
+product_suggestions = ProductViewSet.as_view({'get': 'search_suggestions'})
+
 # Define URL patterns
 urlpatterns = [
-    # REST API endpoints
+    # IMPORTANT: Place explicit routes BEFORE the router.urls include
+    path('api/products/search/', product_search, name='product-search'),
+    path('api/products/search-suggestions/', product_suggestions, name='product-suggestions'),
+    
+    # REST API endpoints (now after the explicit routes)
     path('api/', include(router.urls)),
     
     # Traditional Django views (template-based)
@@ -39,4 +47,8 @@ urlpatterns = [
     # Admin URLs
     path('admin/products/fancy-upload/', views.fancy_product_upload, name='fancy_product_upload'),
     path('admin/products/create/', views.product_create, name='product_create'),
+
+    # Payment URLs
+    path('api/payment/create-payment-intent/', views.create_payment_intent, name='create-payment-intent'),
+    path('api/payment/webhook/', views.stripe_webhook, name='stripe-webhook'),
 ]

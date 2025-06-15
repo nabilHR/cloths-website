@@ -77,25 +77,77 @@ class ProductSerializer(serializers.ModelSerializer):
             'created_at', 'updated_at', 'sku', 'category_name'
         ]
 
-class OrderItemSerializer(serializers.ModelSerializer):
-    product = ProductSerializer()
+class OrderItemSerializer(serializers.Serializer):
+    product_id = serializers.IntegerField()
+    quantity = serializers.IntegerField()
+    size = serializers.CharField(allow_blank=True, required=False)
+    color = serializers.CharField(allow_blank=True, required=False)
+    # Add these fields:
+    product_name = serializers.SerializerMethodField()
+    product_image = serializers.SerializerMethodField()
+    product_price = serializers.SerializerMethodField()
 
-    class Meta:
-        model = OrderItem
-        fields = ['id', 'product', 'quantity', 'size', 'price']
+    def get_product_name(self, obj):
+        return obj.product.name if obj.product else ""
+
+    def get_product_image(self, obj):
+        return obj.product.image.url if obj.product and obj.product.image else ""
+
+    def get_product_price(self, obj):
+        return str(obj.product.price) if obj.product else ""
 
 class OrderSerializer(serializers.ModelSerializer):
-    items = OrderItemSerializer(source='orderitem_set', many=True, read_only=True)
+    items = OrderItemSerializer(many=True)
 
     class Meta:
         model = Order
-        fields = [
-            'id', 'user', 'status', 'created_at', 'updated_at',
-            'shipping_address', 'shipping_city', 'shipping_postal_code', 'shipping_country',
-            'payment_method', 'payment_details', 'subtotal', 'shipping_cost', 'total',
-            'items'
-        ]
+        fields = '__all__'
+        read_only_fields = ['user']  # Make user read-only
 
+    def create(self, validated_data):
+        request = self.context.get('request')
+        user = request.user if request else None
+        if not user or not user.is_authenticated:
+            raise serializers.ValidationError({"user": ["Authentication required."]})
+
+        items_data = validated_data.pop('items')
+        shipping_address_data = validated_data.pop('shipping_address_data', None)
+
+        # Set shipping fields from shipping_address_data if provided
+        if shipping_address_data:
+            validated_data['shipping_address'] = shipping_address_data.get('address', '')
+            validated_data['shipping_city'] = shipping_address_data.get('city', '')
+            validated_data['shipping_postal_code'] = shipping_address_data.get('zip_code', '')
+            validated_data['shipping_country'] = shipping_address_data.get('country', '')
+
+        # Set the user here!
+        validated_data['user'] = user
+
+        order = Order.objects.create(**validated_data)
+
+        subtotal = 0
+        for item_data in items_data:
+            product_id = item_data.get('product_id') or item_data.get('product')
+            if not product_id:
+                raise serializers.ValidationError("Each item must have a product_id.")
+            product = Product.objects.get(id=product_id)
+            price = product.sale_price if product.sale_price else product.price
+
+            OrderItem.objects.create(
+                order=order,
+                product=product,
+                quantity=item_data['quantity'],
+                size=item_data.get('size', ''),
+                color=item_data.get('color', ''),
+                price=price
+            )
+            subtotal += price * item_data['quantity']
+
+        order.subtotal = subtotal
+        order.total = subtotal
+        order.save()
+
+        return order
 from django.contrib.auth.models import User
 from rest_framework import serializers
 
@@ -122,53 +174,29 @@ class ReviewImageSerializer(serializers.ModelSerializer):
         fields = ['id', 'image']
 
 class ReviewSerializer(serializers.ModelSerializer):
-    user = serializers.StringRelatedField(read_only=True)
-    user_email = serializers.SerializerMethodField()
-    images = ReviewImageSerializer(many=True, read_only=True)
-    uploaded_images = serializers.ListField(
-        child=serializers.ImageField(max_length=1000000, allow_empty_file=False),
-        write_only=True,
-        required=False
-    )
+    # user_name will be serialized for GET requests, but not expected in POST/PUT data.
+    user_name = serializers.CharField(source='user.username', read_only=True)
     
+    # The 'user' field (ForeignKey to User model) will be populated by the view's perform_create method.
+    # It should be included in 'fields' if you want to see the user ID in the response,
+    # but it MUST be marked as read-only for input.
+
     class Meta:
         model = Review
-        fields = ['id', 'product', 'user', 'user_email', 'title', 'content', 
-                 'rating', 'created_at', 'is_verified_purchase', 'images', 'uploaded_images']
-        read_only_fields = ['user', 'is_verified_purchase', 'created_at']
-    
-    def get_user_email(self, obj):
-        # Return first letter of email + asterisks for privacy
-        email = obj.user.email
-        if email:
-            username, domain = email.split('@')
-            masked_username = username[0] + '*' * (len(username) - 1)
-            return f"{masked_username}@{domain}"
-        return ""
-    
-    def create(self, validated_data):
-        uploaded_images = validated_data.pop('uploaded_images', [])
-        user = self.context['request'].user
-        
-        # Check if this is a verified purchase
-        order_items = OrderItem.objects.filter(
-            order__user=user, 
-            product_id=validated_data['product'].id,
-            order__status='completed'
-        )
-        is_verified = order_items.exists()
-        
-        review = Review.objects.create(
-            user=user,
-            is_verified_purchase=is_verified,
-            **validated_data
-        )
-        
-        # Create review images
-        for image in uploaded_images:
-            ReviewImage.objects.create(review=review, image=image)
-            
-        return review
+        fields = [
+            'id', 
+            'product', 
+            'user',         # Included for outputting the user ID
+            'user_name',    # Included for outputting the username
+            'rating', 
+            'title', 
+            'content', 
+            'created_at'
+        ]
+        # 'user' is made read-only here. This means if 'user' is present in the POST data,
+        # it will be ignored during deserialization, so serializer.validated_data will not contain 'user'.
+        # 'created_at' and 'user_name' are also inherently read-only due to their nature or explicit setting.
+        read_only_fields = ('user', 'created_at', 'user_name')
 
 class ShippingAddressSerializer(serializers.ModelSerializer):
     class Meta:
@@ -178,11 +206,12 @@ class ShippingAddressSerializer(serializers.ModelSerializer):
         read_only_fields = ['created_at']
 
 class WishlistItemSerializer(serializers.ModelSerializer):
-    product = ProductSerializer()
+    product = ProductSerializer(read_only=True) # Product details for GET, read-only for input
     
     class Meta:
         model = WishlistItem
-        fields = ['id', 'product', 'added_at']
+        fields = ['id', 'user', 'product', 'added_at']
+        read_only_fields = ('user', 'added_at') # User will be set from request
 
 class UserProfileSerializer(serializers.ModelSerializer):
     class Meta:

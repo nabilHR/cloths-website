@@ -20,15 +20,20 @@ function Home() {
         const data = await response.json();
         console.log('Home categories data:', data);
         
-        // Handle different response formats
+        // Handle different response formats and filter out duplicates
+        let allCategories = [];
         if (Array.isArray(data)) {
-          setCategories(data);
+          allCategories = data;
         } else if (data.results && Array.isArray(data.results)) {
-          setCategories(data.results);
-        } else {
-          console.error('Unexpected categories data format:', data);
-          setCategories([]);
+          allCategories = data.results;
         }
+        
+        // FILTER: Keep only the simple 'men', 'women', 'kids' categories
+        const filteredCategories = allCategories.filter(cat => 
+          ['men', 'women', 'kids'].includes(cat.slug)
+        );
+        
+        setCategories(filteredCategories);
       } catch (err) {
         console.error('Error fetching categories:', err);
         setError(err.message);
@@ -42,7 +47,7 @@ function Home() {
 
   // Safe filtering - only if categories is an array
   const featuredCategories = Array.isArray(categories) 
-    ? categories.filter(cat => cat.featured === true)
+    ? categories
     : [];
 
   if (loading) {
@@ -71,11 +76,11 @@ function Home() {
                   to={`/category/${category.slug}`}
                   className="group"
                 >
-                  <div className="relative overflow-hidden">
-                    <img 
-                      src={category.image || 'https://via.placeholder.com/400x500'} 
+                  <div className="relative overflow-hidden flex justify-center items-center bg-gray-100 w-full max-w-xs h-80 mx-auto rounded-xl shadow-md">
+                    <img
+                      src={`/category-images/${category.slug}.jpg`}
                       alt={category.name}
-                      className="w-full h-80 object-cover transition-transform duration-500 group-hover:scale-105"
+                      className="w-full h-full object-cover rounded-xl transition-transform duration-500 group-hover:scale-105"
                     />
                     <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-20 group-hover:bg-opacity-10 transition-all duration-300">
                       <span className="text-white text-2xl font-light">{category.name}</span>
@@ -94,60 +99,6 @@ function Home() {
       
       {/* Featured Products Section */}
       <FeaturedProducts />
-      
-      {/* Newsletter */}
-      <section className="py-16 px-4 bg-gray-50">
-        <div className="max-w-lg mx-auto text-center">
-          <h2 className="text-2xl font-light mb-4">Join Our Newsletter</h2>
-          <p className="text-gray-600 mb-6">Sign up to receive updates on new arrivals and special offers</p>
-          
-          <form className="flex">
-            <input 
-              type="email" 
-              placeholder="Your email address" 
-              className="flex-1 p-3 border border-gray-300 focus:outline-none focus:border-black"
-              required
-            />
-            <button 
-              type="submit"
-              className="bg-black text-white px-6 py-3 uppercase text-sm tracking-wider hover:bg-gray-800 transition-colors"
-            >
-              Subscribe
-            </button>
-          </form>
-        </div>
-      </section>
-
-      {/* Debug Component - Temporary */}
-      <CategoryDebug />
-    </div>
-  );
-}
-
-// Add this component to your Home.jsx temporarily
-function CategoryDebug() {
-  const [allCategories, setAllCategories] = useState([]);
-  
-  useEffect(() => {
-    fetch('http://localhost:8000/api/categories/')
-      .then(res => res.json())
-      .then(data => {
-        console.log("Raw API response:", data);
-        // Check if data is paginated
-        if (data.results) {
-          setAllCategories(data.results);
-        } else if (Array.isArray(data)) {
-          setAllCategories(data);
-        }
-      });
-  }, []);
-  
-  return (
-    <div className="bg-gray-100 p-4 my-4">
-      <h3 className="font-bold">All Categories:</h3>
-      <pre className="text-xs mt-2 overflow-auto">
-        {JSON.stringify(allCategories, null, 2)}
-      </pre>
     </div>
   );
 }

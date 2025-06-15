@@ -1,6 +1,7 @@
 // In ProductManagement.jsx or similar component
 import React, { useState, useEffect } from 'react';
-import { showToast } from '../utils/toast';
+import { Link } from 'react-router-dom'; // Import Link
+import { toast } from 'react-hot-toast';
 
 function ProductManagement() {
   const [products, setProducts] = useState([]);
@@ -11,6 +12,7 @@ function ProductManagement() {
   }, []);
   
   const fetchProducts = async () => {
+    setLoading(true);
     try {
       const token = localStorage.getItem('authToken');
       const response = await fetch('http://localhost:8000/api/products/', {
@@ -24,9 +26,10 @@ function ProductManagement() {
       }
       
       const data = await response.json();
-      setProducts(data.results || data);
+      setProducts(Array.isArray(data) ? data : data.results || []);
     } catch (error) {
-      console.error('Error:', error);
+      toast.error(error.message || 'Could not load products.');
+      console.error("Fetch products error:", error);
     } finally {
       setLoading(false);
     }
@@ -59,56 +62,59 @@ function ProductManagement() {
     }
   };
   
+  if (loading) return <div className="text-center p-10">Loading products...</div>;
+
   return (
-    <div className="max-w-6xl mx-auto p-4">
-      <h1 className="text-3xl font-bold mb-6">Product Management</h1>
-      
-      {loading ? (
-        <div className="text-center">Loading products...</div>
+    <div className="container mx-auto p-4">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-bold">Product Management</h1>
+        {/* Optional: Link to a page for creating new products */}
+        {/* <Link to="/admin/products/new" className="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded">
+            Add New Product
+        </Link> */}
+      </div>
+
+      {products.length === 0 ? (
+        <p>No products found.</p>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="min-w-full bg-white divide-y divide-gray-200">
+        <div className="overflow-x-auto bg-white shadow-md rounded-lg">
+          <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Image</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Price</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Category</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">In Stock</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Category</th>
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Price</th>
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Stock</th>
+                <th scope="col" className="relative px-6 py-3">
+                  <span className="sr-only">Edit</span>
+                </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-200">
-              {products.map(product => (
+            <tbody className="bg-white divide-y divide-gray-200">
+              {products.map((product) => (
                 <tr key={product.id}>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <img 
-                      src={product.image || 'https://placehold.co/100x100'} 
-                      alt={product.name}
-                      className="w-12 h-12 object-cover rounded"
-                    />
+                    <div className="text-sm font-medium text-gray-900">{product.name}</div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap">{product.name}</td>
-                  <td className="px-6 py-4 whitespace-nowrap">${product.price}</td>
-                  <td className="px-6 py-4 whitespace-nowrap">{product.category_name}</td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`inline-flex px-2 py-1 text-xs rounded-full ${product.in_stock ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                      {product.in_stock ? 'In Stock' : 'Out of Stock'}
+                    <div className="text-sm text-gray-500">{product.category?.name || 'N/A'}</div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm text-gray-500">${parseFloat(product.price).toFixed(2)}</div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${product.stock_quantity > 0 ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                      {product.stock_quantity > 0 ? `${product.stock_quantity} in stock` : 'Out of stock'}
                     </span>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <button 
-                      onClick={() => handleDeleteProduct(product.id)}
-                      className="text-red-600 hover:text-red-900 mr-3"
-                    >
-                      Delete
-                    </button>
-                    <a 
-                      href={`/edit-product/${product.id}`}
-                      className="text-blue-600 hover:text-blue-900"
+                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                    <Link 
+                      to={`/admin/products/${product.id}/edit`} 
+                      className="text-indigo-600 hover:text-indigo-900"
                     >
                       Edit
-                    </a>
+                    </Link>
+                    {/* You might also add a delete button here */}
                   </td>
                 </tr>
               ))}

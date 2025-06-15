@@ -19,6 +19,7 @@ INSTALLED_APPS = [
     'corsheaders',
     'store',  # Make sure this line exists
     'MyAuth',
+    'django_filters',  # ADD THIS LINE
 ]
 
 MIDDLEWARE = [
@@ -123,3 +124,8 @@ REST_FRAMEWORK = {
 # Email settings
 DEFAULT_FROM_EMAIL = 'store@example.com'
 EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'  # For development
+
+# Replace these placeholder values with real test keys from your Stripe Dashboard
+STRIPE_PUBLISHABLE_KEY = 'pk_test_51Mxxx...'  # Get from Stripe Dashboard
+STRIPE_SECRET_KEY = 'sk_test_51Mxxx...'  # Get from Stripe Dashboard
+STRIPE_WEBHOOK_SECRET = 'whsec_xxx...'  # Get from Stripe CLI or Dashboard

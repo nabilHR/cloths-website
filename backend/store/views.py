@@ -1,8 +1,8 @@
 from django.contrib.auth.models import User
 from django.contrib.auth import get_user_model
-from rest_framework import viewsets, permissions, status
+from rest_framework import viewsets, status, filters, permissions
+from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
-from rest_framework.decorators import action
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.authtoken.models import Token
@@ -11,7 +11,7 @@ from django.db import transaction
 from django.core.mail import send_mail
 from django.template.loader import render_to_string
 from django.conf import settings
-from .models import Review, Product, Category, Order, OrderItem, ShippingAddress, WishlistItem, UserProfile, Address, SubCategory
+from .models import Review, Product, Category, Order, OrderItem, ShippingAddress, WishlistItem, UserProfile, Address, SubCategory, ProductImage
 from .serializers import (
     RegisterSerializer, 
     CategorySerializer, 
@@ -28,14 +28,52 @@ import json
 import os
 import uuid
 import traceback
+import stripe
 from django.db.models import Q
 from .pagination import CustomPagination
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib import messages
-from .models import ProductImage
+from rest_framework import filters
+from django_filters.rest_framework import DjangoFilterBackend
 
+# Initialize Stripe
+stripe.api_key = settings.STRIPE_SECRET_KEY
 
+def calculate_order_total(order_data):
+    """Calculate the total amount for an order including shipping and tax"""
+    # If the client sends the pre-calculated amount, use that
+    if 'amount' in order_data and order_data['amount']:
+        return float(order_data['amount'])
+    
+    # Otherwise calculate from order_id
+    if 'order_id' in order_data:
+        try:
+            order = Order.objects.get(id=order_data['order_id'])
+            return float(order.total)
+        except Order.DoesNotExist:
+            raise ValueError(f"Order with ID {order_data['order_id']} not found")
+    
+    # If neither amount nor order_id provided, calculate from items
+    subtotal = 0
+    items = order_data.get('items', [])
+    
+    for item in items:
+        product_id = item.get('product_id') or item.get('product')
+        quantity = item.get('quantity', 1)
+        
+        try:
+            product = Product.objects.get(id=product_id)
+            price = float(product.sale_price or product.price)
+            subtotal += price * quantity
+        except Product.DoesNotExist:
+            print(f"Product {product_id} not found")
+    
+    # Add shipping and tax
+    shipping = 0.00  # Free shipping
+    tax = subtotal * 0.1  # 10% tax
+    
+    return subtotal + shipping + tax
 
 class CategoryViewSet(viewsets.ModelViewSet):
     queryset = Category.objects.all()
@@ -63,38 +101,91 @@ class ProductViewSet(viewsets.ModelViewSet):
     API endpoint for products
     """
     serializer_class = ProductSerializer
-    
+    filter_backends = [filters.OrderingFilter, DjangoFilterBackend, filters.SearchFilter] 
+    ordering_fields = ['created_at', 'price', 'name'] 
+    ordering = ['-created_at'] 
+
+    # CONSOLIDATED get_permissions (ensure the other definition is removed from your file)
     def get_permissions(self):
-        if self.action in ['list', 'retrieve', 'get_by_slug']:
-            return [permissions.AllowAny()]
-        return [permissions.IsAuthenticated()]
+        if self.action in ['update', 'partial_update', 'destroy', 'create']:
+            if self.action == 'create':
+                 return [permissions.IsAuthenticated()]
+            return [permissions.IsAdminUser()] 
+        return [permissions.AllowAny()]
     
     def get_queryset(self):
-        queryset = Product.objects.all().order_by('-created_at')
+        queryset = Product.objects.all() \
+                                 .select_related('category') \
+                                 .prefetch_related('images')
         
-        # Get category parameter and apply strict filtering
-        category = self.request.query_params.get('category')
-        if category:
+        # Get category parameter and apply filtering by category ID
+        category_param = self.request.query_params.get('category')
+        if category_param:
             try:
-                # Ensure exact integer matching for category ID
-                category_id = int(category)
+                category_id = int(category_param)
                 print(f"Filtering products by category ID: {category_id}")
                 queryset = queryset.filter(category_id=category_id)
                 print(f"Found {queryset.count()} products in category {category_id}")
             except (ValueError, TypeError):
-                # Return empty queryset if category is not a valid integer
-                print(f"Invalid category ID: {category}")
+                print(f"Invalid category ID: {category_param}")
                 return Product.objects.none()
         
-        # Filter by other parameters
-        subcategory = self.request.query_params.get('subcategory')
-        if subcategory:
-            queryset = queryset.filter(subcategory_id=subcategory)
+        # Size filtering - FIXED VERSION
+        size_param = self.request.query_params.get('size')
+        if size_param:
+            print(f"Filtering products by size: {size_param}")
             
-        featured = self.request.query_params.get('featured')
-        if featured and featured.lower() == 'true':
+            # Use a more flexible approach with Q objects to handle different data formats
+            from django.db.models import Q
+            
+            size_query = (
+                Q(sizes__contains=[size_param]) |  # For JSONField/ArrayField with exact array items
+                Q(sizes__contains=size_param) |     # For JSONField with string within JSON
+                Q(sizes__icontains=f'"{size_param}"') |  # For JSONField with quoted strings
+                Q(sizes__icontains=f',{size_param},') |  # For comma-separated list in the middle
+                Q(sizes__istartswith=f'{size_param},') | # For comma-separated list at start
+                Q(sizes__iendswith=f',{size_param}') |   # For comma-separated list at end
+                Q(sizes__iexact=size_param)              # For exact match (single size)
+            )
+            
+            queryset = queryset.filter(size_query)
+            print(f"Found {queryset.count()} products with size {size_param}")
+    
+        # Filter by featured status
+        featured_param = self.request.query_params.get('featured')
+        if featured_param and featured_param.lower() == 'true':
             queryset = queryset.filter(featured=True)
             
+        # Handle sorting
+        sort_by_param = self.request.query_params.get('sort_by')
+        if sort_by_param == 'newest':
+            queryset = queryset.order_by('-created_at') 
+        elif sort_by_param == 'price_asc':
+            queryset = queryset.order_by('price')
+        elif sort_by_param == 'price_desc':
+            queryset = queryset.order_by('-price')
+        elif not sort_by_param and not self.request.query_params.get('ordering'):
+            # Default ordering if no specific sort_by or DRF 'ordering' param is provided
+            queryset = queryset.order_by('-created_at')
+        # Note: If 'rest_framework.filters.OrderingFilter' is active (which it is in your filter_backends),
+        # it will also look for an 'ordering' query parameter. The logic here for 'sort_by'
+        # can coexist or you might choose to rely solely on OrderingFilter.
+
+        # Price range filtering
+        min_price_param = self.request.query_params.get('min_price')
+        max_price_param = self.request.query_params.get('max_price')
+        if min_price_param:
+            try:
+                queryset = queryset.filter(price__gte=float(min_price_param))
+            except ValueError:
+                print(f"Invalid min_price parameter: {min_price_param}")
+        if max_price_param:
+            try:
+                queryset = queryset.filter(price__lte=float(max_price_param))
+            except ValueError:
+                print(f"Invalid max_price parameter: {max_price_param}")
+        
+        print(f"Final queryset count before pagination: {queryset.count()}")
         return queryset
         
     # Add explicit delete method to ensure it works
@@ -109,7 +200,7 @@ class ProductViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-    @action(detail=False, methods=['get'], url_path='(?P<slug>[-\w]+)', permission_classes=[permissions.AllowAny])
+    @action(detail=False, methods=['get'], url_path=r'(?P<slug>[-\w]+)', permission_classes=[permissions.AllowAny])
     def get_by_slug(self, request, slug=None):
         """Get a product by its slug"""
         try:
@@ -121,6 +212,92 @@ class ProductViewSet(viewsets.ModelViewSet):
                 {"detail": "Product not found"},
                 status=status.HTTP_404_NOT_FOUND
             )
+
+    # Default ModelViewSet provides GET (single), PUT, PATCH, DELETE for /api/products/{id}/
+    # You might override update for complex image handling:
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        
+        # --- Example: Basic image handling ---
+        # If you send 'images_to_delete' (list of image IDs)
+        images_to_delete_ids = request.data.get('images_to_delete', [])
+        if images_to_delete_ids:
+            ProductImage.objects.filter(id__in=images_to_delete_ids, product=instance).delete()
+
+        # If you send 'new_images' (list of new image files)
+        # This part is more complex with DRF serializers and file uploads.
+        # Often, new images are handled by creating new ProductImage instances.
+        # The ProductSerializer might need to be adjusted to accept nested writes for new images
+        # or you handle it explicitly here.
+
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+
+        if getattr(instance, '_prefetched_objects_cache', None):
+            # If 'prefetch_related' has been used, ensure it's reset.
+            instance._prefetched_objects_cache = {}
+
+        return Response(serializer.data)
+
+    def perform_update(self, serializer):
+        serializer.save()
+        # Potentially handle new image uploads here if not done by serializer
+        # For example, if request.FILES contains new images:
+        # new_images_files = self.request.FILES.getlist('new_images_files_field_name')
+        # product_instance = serializer.instance
+        # for img_file in new_images_files:
+        # ProductImage.objects.create(product=product_instance, image=img_file)
+
+
+    @action(detail=False, methods=['get'], url_path='search')
+    def search(self, request):
+        """Search products by query term"""
+        q = request.query_params.get('q', '')
+        if not q:
+            return Response({"detail": "Search query is required"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        queryset = Product.objects.filter(
+            Q(name__icontains=q) | 
+            Q(description__icontains=q) |
+            Q(category__name__icontains=q)
+        ).select_related('category').prefetch_related('images')
+        
+        # Apply regular pagination
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+        
+        # Return non-paginated response if pagination is disabled
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['get'], url_path='search-suggestions')
+    def search_suggestions(self, request):
+        """Get search suggestions for autocomplete"""
+        q = request.query_params.get('q', '')
+        if not q or len(q) < 2:  # Require at least 2 characters for suggestions
+            return Response([])
+        
+        # Get product name suggestions
+        product_suggestions = Product.objects.filter(
+            name__icontains=q
+        ).values_list('name', flat=True).distinct()[:5]
+        
+        # Get category suggestions
+        category_suggestions = Category.objects.filter(
+            name__icontains=q
+        ).values_list('name', flat=True).distinct()[:3]
+        
+        # Combine suggestions
+        suggestions = list(product_suggestions) + list(category_suggestions)
+        
+        # Limit to top 8 suggestions
+        suggestions = suggestions[:8]
+        
+        return Response(suggestions)
 
 class RegisterView(APIView):
     permission_classes = [permissions.AllowAny]
@@ -185,146 +362,26 @@ class RegisterView(APIView):
             'user': user_data,
             'token': token.key
         }, status=status.HTTP_201_CREATED)
+#start
+# In store/views.py
+
+# DELETE your entire old OrderViewSet and REPLACE it with this:
 
 class OrderViewSet(viewsets.ModelViewSet):
     serializer_class = OrderSerializer
     permission_classes = [IsAuthenticated]
-    
-    def get_queryset(self):
-        return Order.objects.filter(user=self.request.user)
-    
-    def retrieve(self, request, *args, **kwargs):
-        instance = self.get_object()
-        
-        # Check if the user has permission to view this order
-        if instance.user != request.user:
-            return Response(
-                {"detail": "You do not have permission to view this order."},
-                status=status.HTTP_403_FORBIDDEN
-            )
-            
-        serializer = self.get_serializer(instance)
-        return Response(serializer.data)
-    
-    def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        
-        # Add the user to the order data
-        serializer.validated_data['user'] = request.user
-        
-        # Create the order
-        order = self.perform_create(serializer)
-        
-        # Return the new order data
-        return Response(
-            self.get_serializer(order).data,
-            status=status.HTTP_201_CREATED
-        )
-    
-    def perform_create(self, serializer):
-        return serializer.save()
-    
-    def create(self, request):
-        # Extract data from request
-        items_data = request.data.get('items', [])
-        shipping_data = request.data.get('shipping', {})
-        payment_data = request.data.get('payment', {})
-        
-        # Validate data
-        if not items_data:
-            return Response(
-                {'detail': 'No items in order'}, 
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        # Calculate totals
-        subtotal = 0
-        for item in items_data:
-            try:
-                product = Product.objects.get(id=item['product_id'])
-                subtotal += float(product.price) * int(item['quantity'])
-            except Product.DoesNotExist:
-                return Response(
-                    {'detail': f'Product with ID {item["product_id"]} not found'},
-                    status=status.HTTP_404_NOT_FOUND
-                )
-        
-        shipping_cost = 10.00  # Fixed shipping cost
-        total = subtotal + shipping_cost
-        
-        # Create order
-        try:
-            with transaction.atomic():
-                # Create order
-                order = Order.objects.create(
-                    user=request.user,
-                    status='pending',
-                    subtotal=subtotal,
-                    shipping_cost=shipping_cost,
-                    total=total,
-                    shipping_address=shipping_data.get('address', ''),
-                    shipping_city=shipping_data.get('city', ''),
-                    shipping_postal_code=shipping_data.get('postal_code', ''),
-                    shipping_country=shipping_data.get('country', ''),
-                    payment_method='credit_card',
-                    payment_details={
-                        'card_name': payment_data.get('card_name', ''),
-                        'last_four': payment_data.get('last_four', '')
-                    }
-                )
-                
-                # Create order items
-                for item_data in items_data:
-                    product = Product.objects.get(id=item_data['product_id'])
-                    OrderItem.objects.create(
-                        order=order,
-                        product=product,
-                        quantity=item_data['quantity'],
-                        size=item_data['size'],
-                        price=product.price
-                    )
-                
-                # Send confirmation email
-                self.send_order_confirmation_email(order, shipping_data.get('email'))
-                
-                serializer = OrderSerializer(order)
-                return Response(serializer.data, status=status.HTTP_201_CREATED)
-        except Exception as e:
-            return Response(
-                {'detail': str(e)},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-    
-    def send_order_confirmation_email(self, order, email):
-        try:
-            # Get order items
-            items = OrderItem.objects.filter(order=order).select_related('product')
-            
-            # Create email context
-            context = {
-                'order': order,
-                'items': items,
-                'user': order.user
-            }
-            
-            # Render email content
-            html_content = render_to_string('order_confirmation_email.html', context)
-            text_content = render_to_string('order_confirmation_email.txt', context)
-            
-            # Send email
-            send_mail(
-                subject=f'Order Confirmation #{order.id}',
-                message=text_content,
-                from_email=settings.DEFAULT_FROM_EMAIL,
-                recipient_list=[email],
-                html_message=html_content,
-                fail_silently=False
-            )
-        except Exception as e:
-            # Log the error but don't stop the order process
-            print(f"Email error: {str(e)}")
 
+    def get_queryset(self):
+        # Only return orders for the current user!
+        return Order.objects.filter(user=self.request.user)
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context['request'] = self.request
+        return context
+# NOTE: The two duplicate "def create(...)" methods are now gone. 
+# The serializer will handle the creation logic.
+# ende here
 class BulkProductUploadView(APIView):
     permission_classes = [IsAuthenticated]  # Changed to just IsAuthenticated to help with testing
     
@@ -441,53 +498,22 @@ class BulkProductUploadView(APIView):
             return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 class ReviewViewSet(viewsets.ModelViewSet):
+    queryset = Review.objects.all()
     serializer_class = ReviewSerializer
-    
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly] # Or appropriate permissions
+
+    def perform_create(self, serializer):
+        # This is the standard DRF way to associate the current user.
+        # It passes 'user=self.request.user' as an additional keyword argument to serializer.save().
+        serializer.save(user=self.request.user)
+
     def get_queryset(self):
-        # Anyone can view all reviews
+        # Your existing queryset logic for filtering by product_id
+        queryset = super().get_queryset()
         product_id = self.request.query_params.get('product')
         if product_id:
-            return Review.objects.filter(product_id=product_id)
-        
-        # If user is authenticated, they can see their own reviews via 'my-reviews'
-        if self.action == 'my_reviews' and self.request.user.is_authenticated:
-            return Review.objects.filter(user=self.request.user)
-            
-        return Review.objects.all()
-    
-    def get_permissions(self):
-        if self.action in ['create', 'update', 'partial_update', 'destroy', 'my_reviews']:
-            return [IsAuthenticated()]
-        return [AllowAny()]
-    
-    @action(detail=False, methods=['get'])
-    def my_reviews(self, request):
-        queryset = self.get_queryset()
-        serializer = self.get_serializer(queryset, many=True)
-        return Response(serializer.data)
-    
-    @action(detail=False, methods=['get'])
-    def my_review(self, request):
-        product_id = request.query_params.get('product')
-        if not product_id:
-            return Response({'detail': 'Product ID is required'}, status=400)
-            
-        queryset = Review.objects.filter(
-            user=request.user,
-            product_id=product_id
-        )
-        serializer = self.get_serializer(queryset, many=True)
-        return Response(serializer.data)
-    
-    def perform_create(self, serializer):
-        # Check if user already reviewed this product
-        product_id = self.request.data.get('product')
-        user_review = Review.objects.filter(user=self.request.user, product_id=product_id)
-        
-        if user_review.exists():
-            raise serializers.ValidationError("You have already reviewed this product")
-            
-        serializer.save(user=self.request.user)
+            queryset = queryset.filter(product_id=product_id)
+        return queryset
 
 class ShippingAddressViewSet(viewsets.ModelViewSet):
     serializer_class = ShippingAddressSerializer
@@ -501,33 +527,61 @@ class ShippingAddressViewSet(viewsets.ModelViewSet):
 
 class WishlistViewSet(viewsets.ModelViewSet):
     serializer_class = WishlistItemSerializer
-    permission_classes = [IsAuthenticated]
-    
+    permission_classes = [permissions.IsAuthenticated]
+
     def get_queryset(self):
-        return WishlistItem.objects.filter(user=self.request.user)
-    
-    def create(self, request):
-        product_id = request.data.get('product_id')
+        """
+        This view should return a list of all the wishlist items
+        for the currently authenticated user.
+        """
+        return WishlistItem.objects.filter(user=self.request.user).select_related('product')
+
+    def perform_create(self, serializer):
+        """
+        Associate the wishlist item with the current authenticated user.
+        Expects 'product_id' in request.data.
+        """
+        product_id = self.request.data.get('product_id')
+        if not product_id:
+            # Using DRF's validation handling is cleaner if product_id is part of serializer
+            # For now, manual check:
+            return Response({'product_id': ['This field is required.']}, status=status.HTTP_400_BAD_REQUEST)
         
         try:
             product = Product.objects.get(id=product_id)
         except Product.DoesNotExist:
-            return Response({'detail': 'Product not found'}, status=404)
-            
-        wishlist_item, created = WishlistItem.objects.get_or_create(
-            user=request.user,
-            product=product
-        )
+            return Response({'product_id': ['Invalid product.']}, status=status.HTTP_404_NOT_FOUND)
         
-        if created:
-            return Response({'detail': 'Product added to wishlist'}, status=201)
-        else:
-            return Response({'detail': 'Product already in wishlist'}, status=200)
-            
-    def destroy(self, request, *args, **kwargs):
-        instance = self.get_object()
-        self.perform_destroy(instance)
-        return Response({'detail': 'Product removed from wishlist'}, status=200)
+        if WishlistItem.objects.filter(user=self.request.user, product=product).exists():
+            # Optionally, you could return the existing item or just a specific status/message
+            existing_item = WishlistItem.objects.get(user=self.request.user, product=product)
+            serializer_instance = self.get_serializer(existing_item)
+            return Response(serializer_instance.data, status=status.HTTP_200_OK) # Or status.HTTP_409_CONFLICT
+
+        serializer.save(user=self.request.user, product=product)
+
+    @action(detail=False, methods=['get'], url_path='check/(?P<product_pk>[^/.]+)')
+    def check_product_in_wishlist(self, request, product_pk=None):
+        """
+        Check if a specific product is in the current user's wishlist.
+        """
+        try:
+            product = Product.objects.get(pk=product_pk)
+            wishlist_item = WishlistItem.objects.filter(user=request.user, product=product).first()
+            if wishlist_item:
+                return Response({
+                    'in_wishlist': True, 
+                    'wishlist_item_id': wishlist_item.id,
+                    'product_id': product.id
+                }, status=status.HTTP_200_OK)
+            else:
+                return Response({'in_wishlist': False, 'product_id': product.id}, status=status.HTTP_200_OK)
+        except Product.DoesNotExist:
+            return Response({'detail': 'Product not found.'}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            # Log the exception e for debugging
+            print(f"Error in check_product_in_wishlist: {str(e)}")
+            return Response({'detail': 'An error occurred.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class UserProfileViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
@@ -674,3 +728,115 @@ class SubCategoryViewSet(viewsets.ModelViewSet):
         if category:
             queryset = queryset.filter(category_id=category)
         return queryset
+
+# Add this to your Django views.py for better error handling
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def create_review(request):
+    try:
+        # Log the incoming data for debugging
+        print("Review data received:", request.data)
+        
+        # Create a modified version with the current user
+        data = request.data.copy()
+        data['user'] = request.user.id
+        
+        serializer = ReviewSerializer(data=data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        else:
+            print("Validation errors:", serializer.errors)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    except Exception as e:
+        # Log the exception for debugging
+        print("Error creating review:", str(e))
+        return Response({"detail": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def create_payment_intent(request):
+    """Create a PaymentIntent with Stripe"""
+    try:
+        # Get order details from request
+        order_data = request.data
+        
+        # Calculate amount in the smallest currency unit (cents for USD)
+        amount = calculate_order_total(order_data)
+        amount_cents = int(amount * 100)
+        
+        # Create a PaymentIntent
+        intent = stripe.PaymentIntent.create(
+            amount=amount_cents,
+            currency='usd',
+            metadata={
+                'user_id': request.user.id,
+                'order_id': order_data.get('order_id')
+            },
+        )
+        
+        return Response({
+            'client_secret': intent.client_secret
+        })
+    
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['POST'])
+def stripe_webhook(request):
+    """Handle Stripe webhook events"""
+    payload = request.body
+    sig_header = request.META.get('HTTP_STRIPE_SIGNATURE')
+    
+    try:
+        event = stripe.Webhook.construct_event(
+            payload, sig_header, settings.STRIPE_WEBHOOK_SECRET
+        )
+    except ValueError as e:
+        # Invalid payload
+        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+    except stripe.error.SignatureVerificationError as e:
+        # Invalid signature
+        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Handle the event
+    if event.type == 'payment_intent.succeeded':
+        payment_intent = event.data.object
+        order_id = payment_intent.metadata.get('order_id')
+        
+        # Update order status
+        try:
+            order = Order.objects.get(id=order_id)
+            order.status = 'paid'
+            
+            # Save payment details
+            order.payment_method = 'credit_card'
+            order.payment_details = {
+                'payment_id': payment_intent.id,
+                'amount': payment_intent.amount / 100,  # Convert cents to dollars
+                'last_four': payment_intent.payment_method_details.card.last4,
+                'brand': payment_intent.payment_method_details.card.brand,
+            }
+            
+            order.save()
+        except Order.DoesNotExist:
+            return Response({'error': f'Order {order_id} not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    return Response({'status': 'success'})
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def create_order(request):
+    try:
+        print("Received order data:", request.data)
+        # Your existing code...
+        serializer = OrderSerializer(data=request.data)
+        if serializer.is_valid():
+            order = serializer.save(user=request.user)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        else:
+            print("Serializer errors:", serializer.errors)  # Add this for debugging
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    except Exception as e:
+        print("Order creation error:", str(e))  # Add this for debugging
+        return Response({"detail": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

@@ -4,7 +4,7 @@ import { useCart } from '../context/CartContext';
 import { showToast } from '../utils/toast';
 
 function Cart() {
-  const { cartItems, updateCartItemQuantity, removeFromCart } = useCart();
+  const { cartItems, updateQuantity, removeFromCart } = useCart();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [couponCode, setCouponCode] = useState('');
@@ -23,14 +23,8 @@ function Cart() {
   const tax = subtotal * 0.08; // 8% tax rate
   const total = subtotal + shipping + tax - discount;
   
-  const handleQuantityChange = (itemId, newQuantity) => {
-    if (newQuantity < 1) return;
-    
-    updateCartItemQuantity(itemId, newQuantity);
-  };
-  
-  const handleRemoveItem = (itemId) => {
-    removeFromCart(itemId);
+  const handleRemoveItem = (itemId, itemSize) => {
+    removeFromCart(itemId, itemSize);
     showToast.success('Item removed from cart');
   };
   
@@ -58,6 +52,15 @@ function Cart() {
     }
     
     navigate('/checkout');
+  };
+  
+  const formatSize = (size) => {
+    if (!size) return '';
+    return String(size)
+      .replace(/[\[\]'"]/g, '') // remove brackets and quotes
+      .replace(/\r?\n/g, '')    // remove newlines
+      .replace(/^\s+|\s+$/g, '') // trim spaces
+      .toUpperCase(); // optional: always uppercase
   };
   
   if (cartItems.length === 0) {
@@ -121,7 +124,7 @@ function Cart() {
                 <div className="md:col-span-6 flex items-center space-x-4">
                   <Link to={`/product/${item.slug}`} className="shrink-0">
                     <img 
-                      src={item.image || 'https://via.placeholder.com/150'} 
+                      src={item.image || 'https://placehold.co/300x400'} 
                       alt={item.name} 
                       className="w-20 h-20 object-cover rounded"
                     />
@@ -131,7 +134,7 @@ function Cart() {
                       {item.name}
                     </Link>
                     {item.selectedSize && (
-                      <p className="text-sm text-gray-600 mt-1">Size: {item.selectedSize}</p>
+                      <p className="text-sm text-gray-600 mt-1">Size: {formatSize(item.selectedSize)}</p>
                     )}
                     {item.selectedColor && (
                       <p className="text-sm text-gray-600 mt-1">
@@ -142,8 +145,13 @@ function Cart() {
                         ></span>
                       </p>
                     )}
+                    {item.size && (
+                      <p className="text-xs text-gray-500 mt-1">
+                        Size: {formatSize(item.size)}
+                      </p>
+                    )}
                     <button 
-                      onClick={() => handleRemoveItem(item.id)}
+                      onClick={() => handleRemoveItem(item.id, item.selectedSize)}
                       className="text-sm text-red-600 mt-2 hover:underline"
                     >
                       Remove
@@ -156,38 +164,44 @@ function Cart() {
                   {item.sale_price && item.sale_price < item.price ? (
                     <div>
                       <span className="text-red-600">
-                        ${(typeof item.sale_price === 'number' ? item.sale_price : parseFloat(item.sale_price || 0)).toFixed(2)}
+                        {(typeof item.sale_price === 'number' ? item.sale_price : parseFloat(item.sale_price || 0)).toFixed(2)} MAD
                       </span>
-                      <span className="text-gray-500 line-through text-sm ml-1">${item.price.toFixed(2)}</span>
+                      <span className="text-gray-500 line-through text-sm ml-1">
+                        {(typeof item.price === 'number' ? item.price : parseFloat(item.price || 0)).toFixed(2)} MAD
+                      </span>
                     </div>
                   ) : (
-                    <span>${(typeof item.price === 'number' ? item.price : parseFloat(item.price || 0)).toFixed(2)}</span>
+                    <span>
+                      {(typeof item.price === 'number' ? item.price : parseFloat(item.price || 0)).toFixed(2)} MAD
+                    </span>
                   )}
                 </div>
                 
                 {/* Quantity */}
                 <div className="md:col-span-2 text-center">
-                  <div className="inline-flex border border-gray-300">
-                    <button 
-                      onClick={() => handleQuantityChange(item.id, item.quantity - 1)}
-                      className="px-3 py-1 border-r border-gray-300"
+                  <div className="flex items-center justify-center space-x-2">
+                    <button
+                      onClick={() => updateQuantity(item.id, item.size, item.quantity - 1)}
                       disabled={item.quantity <= 1}
+                      className="w-8 h-8 flex items-center justify-center rounded-full border border-gray-300 bg-white text-gray-700 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                      aria-label="Decrease quantity"
                     >
-                      -
+                      <span className="text-xl font-bold">-</span>
                     </button>
-                    <div className="px-4 py-1">{item.quantity}</div>
-                    <button 
-                      onClick={() => handleQuantityChange(item.id, item.quantity + 1)}
-                      className="px-3 py-1 border-l border-gray-300"
+                    <span className="w-10 text-center text-base font-medium select-none">{item.quantity}</span>
+                    <button
+                      onClick={() => updateQuantity(item.id, item.size, item.quantity + 1)}
+                      className="w-8 h-8 flex items-center justify-center rounded-full border border-gray-300 bg-white text-gray-700 hover:bg-gray-100 transition"
+                      aria-label="Increase quantity"
                     >
-                      +
+                      <span className="text-xl font-bold">+</span>
                     </button>
                   </div>
                 </div>
                 
                 {/* Total */}
                 <div className="md:col-span-2 text-right font-medium">
-                  ${(itemPrice * item.quantity).toFixed(2)}
+                  {(itemPrice * item.quantity).toFixed(2)} MAD
                 </div>
               </div>
             );
@@ -202,7 +216,7 @@ function Cart() {
             {/* Subtotal */}
             <div className="flex justify-between mb-2">
               <span className="text-gray-600">Subtotal</span>
-              <span>${subtotal.toFixed(2)}</span>
+              <span>{subtotal.toFixed(2)} MAD</span>
             </div>
             
             {/* Shipping */}
@@ -211,28 +225,28 @@ function Cart() {
               {shipping === 0 ? (
                 <span className="text-green-600">Free</span>
               ) : (
-                <span>${shipping.toFixed(2)}</span>
+                <span>{shipping.toFixed(2)} MAD</span>
               )}
             </div>
             
             {/* Tax */}
             <div className="flex justify-between mb-2">
               <span className="text-gray-600">Tax (8%)</span>
-              <span>${tax.toFixed(2)}</span>
+              <span>{tax.toFixed(2)} MAD</span>
             </div>
             
             {/* Discount */}
             {discount > 0 && (
               <div className="flex justify-between mb-2 text-green-600">
                 <span>Discount</span>
-                <span>-${discount.toFixed(2)}</span>
+                <span>-{discount.toFixed(2)} MAD</span>
               </div>
             )}
             
             {/* Total */}
             <div className="flex justify-between border-t border-gray-200 mt-4 pt-4 font-medium">
               <span>Total</span>
-              <span>${total.toFixed(2)}</span>
+              <span>{total.toFixed(2)} MAD</span>
             </div>
             
             {/* Coupon Code */}
